@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Administrative entry point for a trusted host, not an unrestricted agent tool.
+set -euo pipefail
+GATE_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+export PYTHONPATH="$GATE_ROOT/supervisor"
+exec python3 -m mirrorgate.cli "$@"

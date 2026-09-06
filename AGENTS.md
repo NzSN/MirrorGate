@@ -7,9 +7,12 @@ worker execution infrastructure: protocol, supervisor, language shims, and
 conformance tests. Model resolution and generation belong to Mirrors; private
 specification and evaluation-policy ownership belong to the trusted evaluator.
 
-This repository currently contains initial documentation only. Establish and
-verify build/test commands when implementation begins; do not assume a toolchain
-or claim an isolation guarantee from the repository layout.
+Read [protocol v1](docs/protocol-v1.md) before protocol/runtime changes and the
+[Linux backend guide](docs/linux-bubblewrap.md) before policy, mount, snapshot,
+or process-lifecycle changes. Run `bash scripts/test.sh` for the standalone
+matrix; it requires actual Bubblewrap namespaces and the pinned tool versions
+listed in the README. Build Rust with the committed lockfile. Keep build output
+and temporary evaluator artifacts untracked.
 
 ## Architecture constraints
 
@@ -39,3 +42,9 @@ backend checks separately from passing checks.
 
 Keep application observation fidelity separate from sandbox isolation: preventing
 oracle access does not prove an adapter reports the real implementation's state.
+
+`GateSession` configuration and the administrative CLI belong to trusted code.
+Agent-facing integrations expose only validated tool requests on a preconfigured
+session. A sandbox admission failure must never fall back to a raw subprocess.
+Report per-process/UID limits accurately; this backend rejects aggregate cgroup
+guarantees. Retain shared Node/Rust fixtures when changing a protocol behavior.

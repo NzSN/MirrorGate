@@ -1,0 +1,19 @@
+[package]
+name = "mirrorgate-worker"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+publish = false
+
+[dependencies]
+serde = "=1.0.228"
+serde_json = "=1.0.149"
+num-bigint = "=0.4.6"
+
+[[bin]]
+name = "mirrorgate-counter-worker"
+path = "src/bin/counter.rs"
+
+[[bin]]
+name = "mirrorgate-sdk-fixture"
+path = "tests/support/fixture.rs"

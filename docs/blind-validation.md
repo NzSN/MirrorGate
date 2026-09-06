@@ -1,6 +1,8 @@
 # Blind validation and isolation
 
-Status: design requirements; no isolation guarantee is implemented yet.
+Status: design requirements with an implemented Linux/Bubblewrap profile.
+Consult its [tested restrictions and limitations](linux-bubblewrap.md) and the
+[task evidence](tasks.md); repository layout alone still supplies no guarantee.
 
 ## Objective
 
@@ -63,11 +65,12 @@ worker and clean up owned resources when cooperative cancellation fails.
 External test services need explicit lifecycle ownership too; terminating a
 process does not undo a remote side effect.
 
-A restricted container is a candidate first backend. Docker's isolation depends
+A restricted container is an alternative backend. Docker's isolation depends
 on namespaces, capabilities, mounts, and configuration; rootless mode reduces
 host-root exposure but is not a complete guarantee by itself. A VM or separate
 evaluation host is another option depending on the required trust boundary.
-Backend choice remains open. See
+The initial implementation selects Linux/Bubblewrap; no Docker or VM backend
+has been implemented. See
 [Docker security](https://docs.docker.com/engine/security/) and
 [rootless mode](https://docs.docker.com/engine/security/rootless/).
 

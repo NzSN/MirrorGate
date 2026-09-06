@@ -1,0 +1,34 @@
+{
+  "profile": "mirrorgate.port/v1",
+  "protocolVersion": 1,
+  "mirrors": {
+    "repository": "https://github.com/NzSN/Mirrors",
+    "commit": "0bd67c954cac0f8e04599ee083355589a3f88035",
+    "contract": "Docs/generated-model-interface-spec.md"
+  },
+  "referenceEncoding": {
+    "repository": "https://github.com/NzSN/MirrorECMA",
+    "commit": "89fbd14d6da84c8b755a08abcaf65b6f4ec67192",
+    "typeSource": "src/model-interface.ts",
+    "valueSource": "src/protocol.ts"
+  },
+  "supportedKinds": [
+    "int",
+    "bool",
+    "str",
+    "null",
+    "set",
+    "seq",
+    "tuple",
+    "record",
+    "map",
+    "variant"
+  ],
+  "restrictions": [
+    "map keys must have kind str",
+    "opaqueItf unsupported",
+    "semantic type/value depth <=32",
+    "public fields only; unknown fields rejected"
+  ],
+  "identity": "interfaceDigest is supplied by the trusted evaluator; never recomputed from sanitized public manifest"
+}

@@ -1,0 +1,12 @@
+{
+  "name": "mirrorgate",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": "24.15.0" },
+  "scripts": {
+    "test": "node --test tests/node/*.test.mjs tests/integration/*.test.mjs",
+    "conformance": "node conformance/run.mjs && node conformance/lifecycle.mjs",
+    "test:evaluator": "node integrations/mirrorecma/smoke.mjs"
+  }
+}

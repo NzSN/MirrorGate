@@ -1,0 +1,281 @@
+{
+  "schema": "mirrorgate.lifecycle-fixtures/v1",
+  "manifest": "manifests/counter.json",
+  "instructions": "Each case uses a fresh worker and automatic increasing IDs. Replace hello interfaceDigest/runtime with the selected manifest/runtime. Send each step only after its response unless an explicit concurrent case is provided. Expected result is exact when present.",
+  "cases": [
+    {
+      "name": "initialize-tick-observe-reset-dispose",
+      "steps": [
+        {
+          "op": "hello",
+          "expect": {
+            "ok": true
+          }
+        },
+        {
+          "op": "create",
+          "expect": {
+            "ok": true,
+            "result": null
+          }
+        },
+        {
+          "op": "invoke",
+          "action": "Initialize",
+          "inputs": {},
+          "expect": {
+            "ok": true,
+            "result": null
+          }
+        },
+        {
+          "op": "observe",
+          "expect": {
+            "ok": true,
+            "result": {
+              "Count": {
+                "#bigint": "0"
+              }
+            }
+          }
+        },
+        {
+          "op": "invoke",
+          "action": "Tick",
+          "inputs": {
+            "Stride": {
+              "#bigint": "9007199254740993"
+            }
+          },
+          "expect": {
+            "ok": true,
+            "result": null
+          }
+        },
+        {
+          "op": "observe",
+          "expect": {
+            "ok": true,
+            "result": {
+              "Count": {
+                "#bigint": "9007199254740993"
+              }
+            }
+          }
+        },
+        {
+          "op": "invoke",
+          "action": "Initialize",
+          "inputs": {},
+          "expect": {
+            "ok": true,
+            "result": null
+          }
+        },
+        {
+          "op": "observe",
+          "expect": {
+            "ok": true,
+            "result": {
+              "Count": {
+                "#bigint": "0"
+              }
+            }
+          }
+        },
+        {
+          "op": "dispose",
+          "expect": {
+            "ok": true,
+            "result": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "observation-before-initializer-poisons",
+      "steps": [
+        {
+          "op": "hello",
+          "expect": {
+            "ok": true
+          }
+        },
+        {
+          "op": "create",
+          "expect": {
+            "ok": true
+          }
+        },
+        {
+          "op": "observe",
+          "expect": {
+            "ok": false,
+            "code": "LIFECYCLE"
+          }
+        },
+        {
+          "op": "invoke",
+          "action": "Initialize",
+          "inputs": {},
+          "expect": {
+            "ok": false,
+            "code": "LIFECYCLE"
+          }
+        },
+        {
+          "op": "dispose",
+          "expect": {
+            "ok": true,
+            "result": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "missing-observation-poisons",
+      "steps": [
+        {
+          "op": "hello",
+          "expect": {
+            "ok": true
+          }
+        },
+        {
+          "op": "create",
+          "expect": {
+            "ok": true
+          }
+        },
+        {
+          "op": "invoke",
+          "action": "Initialize",
+          "inputs": {},
+          "expect": {
+            "ok": true
+          }
+        },
+        {
+          "op": "invoke",
+          "action": "Tick",
+          "inputs": {
+            "Stride": {
+              "#bigint": "1"
+            }
+          },
+          "expect": {
+            "ok": false,
+            "code": "LIFECYCLE"
+          }
+        },
+        {
+          "op": "dispose",
+          "expect": {
+            "ok": true,
+            "result": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "invalid-input-poisons",
+      "steps": [
+        {
+          "op": "hello",
+          "expect": {
+            "ok": true
+          }
+        },
+        {
+          "op": "create",
+          "expect": {
+            "ok": true
+          }
+        },
+        {
+          "op": "invoke",
+          "action": "Initialize",
+          "inputs": {},
+          "expect": {
+            "ok": true
+          }
+        },
+        {
+          "op": "observe",
+          "expect": {
+            "ok": true
+          }
+        },
+        {
+          "op": "invoke",
+          "action": "Tick",
+          "inputs": {
+            "Stride": 1
+          },
+          "expect": {
+            "ok": false,
+            "code": "VALUE"
+          }
+        },
+        {
+          "op": "observe",
+          "expect": {
+            "ok": false,
+            "code": "LIFECYCLE"
+          }
+        },
+        {
+          "op": "dispose",
+          "expect": {
+            "ok": true,
+            "result": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "dispose-before-construction",
+      "steps": [
+        {
+          "op": "hello",
+          "expect": {
+            "ok": true
+          }
+        },
+        {
+          "op": "dispose",
+          "expect": {
+            "ok": true,
+            "result": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "idle-cancel-poisons",
+      "steps": [
+        {
+          "op": "hello",
+          "expect": {
+            "ok": true
+          }
+        },
+        {
+          "op": "cancel",
+          "requestId": 1,
+          "expect": {
+            "ok": false,
+            "code": "LIFECYCLE"
+          }
+        },
+        {
+          "op": "dispose",
+          "expect": {
+            "ok": true,
+            "result": null
+          }
+        }
+      ]
+    }
+  ]
+}

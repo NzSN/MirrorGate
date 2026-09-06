@@ -1,111 +1,91 @@
 # Shared worker protocol and runtime shims
 
-Status: proposed protocol design. Exact schema, transport, limits, and version
-strings are not frozen by this document.
+Status: v1 wire shapes, values, limits, and lifecycle are frozen in
+[port protocol v1](protocol-v1.md). The [schemas](../protocol/README.md),
+[Python validator](../supervisor/mirrorgate/protocol.py), and
+[shared vectors](../conformance/vectors.jsonl) implement its shape/value rules.
+Worker and backend verification is recorded separately in the implementation plan.
 
-## Scope
+## Scope and ownership
 
 The worker protocol crosses the isolation boundary. It carries declared port
-operations and actual observations, while the existing Mirrors protocol remains
-inside trusted evaluation. Private specification selection, invariant choices,
-expected state, and raw trace/configuration payloads are outside its scope.
+operations and actual observations. The existing Mirrors protocol remains in
+trusted evaluation; private specification selection, invariant choices, expected
+states, and raw trace/configuration payloads never belong on the worker channel.
 
-A shared protocol makes workers interchangeable at the semantic interface. It
-does not require the same native method syntax, object layout, or binary ABI.
+The common protocol gives language shims the same semantic interface. It does
+not impose the same native method syntax, object layout, or binary ABI. Model
+resolution and generation remain in Mirrors. MirrorGate consumes a sanitized
+public manifest and keeps policy independent of each client/runtime language.
 
 ## Identity and admission
 
-Before invoking application code, the evaluator and supervisor should verify:
+The trusted evaluator selects the public interface, submission artifact, runtime,
+and sandbox policy. A `mirrorgate.port/v1` manifest contains the interface digest,
+initializers, actions, inputs, observations, and portable types. Unknown fields
+are rejected. The shim validates it before loading submission-controlled code;
+the adapter factory and SUT constructor run only on admitted `create`.
 
-- the worker-protocol version and supported capabilities;
-- the public semantic interface identity;
-- the selected language/runtime profile and submission artifact;
-- the public operation/type manifest allowed by the evaluator;
-- the trusted sandbox policy and requested resource profile.
+The public digest is supplied by the evaluator. The worker cannot reconstruct
+an original Mirrors descriptor digest from a sanitized artifact. Record private
+model identity separately: public interface identity does not identify hidden
+invariants or evaluation traces. Worker declarations cannot grant privileges.
 
-Private model identity is recorded separately by the evaluator. An interface
-digest identifies the agreed port semantics, not every private model behavior
-or invariant used to test it. Worker-declared capabilities are checked against
-trusted requirements; they cannot grant the worker additional privileges.
+## Logical operations
 
-## Logical messages
+| Wire operation | Purpose |
+| --- | --- |
+| `hello` | Agree on v1, public interface digest, and runtime |
+| `create` | Construct a fresh binding/SUT after admission |
+| `invoke` | Execute a declared initializer or action with its public inputs |
+| `observe` | Read complete declared observations after the operation finishes |
+| `cancel` | Request cooperative cancellation of the pending operation |
+| `dispose` | Release owned resources at most once |
 
-These names describe responsibilities rather than final wire operation names:
+Requests use strictly increasing positive safe-integer IDs and one pending
+ordinary operation. Cancellation is the only concurrent request. Its response
+order is the original request's `CANCELLED` failure, then the cancellation's
+success. Cancellation poisons the binding and does not prove callbacks or
+external effects have stopped. The supervisor owns deadlines and forced teardown.
 
-| Operation | Direction | Purpose |
-| --- | --- | --- |
-| Handshake | Both | Correlate protocol, public interface, runtime, and capabilities |
-| Create | Evaluator to worker | Construct a fresh local binding/SUT after admission |
-| Initialize / invoke action | Evaluator to worker | Execute one declared operation with only its public inputs |
-| Observe | Evaluator to worker | Read the complete declared observation after the action finishes |
-| Result / failure | Worker to evaluator | Return operation completion, observations, or bounded application failure |
-| Cancel | Evaluator to worker | Request cancellation of the current operation |
-| Dispose | Evaluator to worker | Release the local SUT and owned resources |
+An initializer must precede the first observation/action. Every invocation must
+be followed by exactly one observation. A declared initializer can reset the
+application after a prior observation. Failure permits only disposal; malformed
+framing/correlation terminates the channel. Cleanup cannot race a still-running
+cancelled callback and must preserve the original failure.
 
-The supervisor additionally controls process launch and forced termination.
-Those controls do not need to be expressible as worker-granted capabilities.
+## Values, framing, and generated proxies
 
-Every request/response needs correlation and a defined terminal outcome.
-Version 1 should serialize operations per worker to retain deterministic
-action/observation ordering. Define how handshake errors, duplicate responses,
-unknown IDs, unsolicited messages, and responses after cancellation terminate
-the session. Cancellation and process teardown must work even when an action is
-pending; whether Create is a wire operation or part of the launch handshake is
-an open schema decision.
+The portable v1 profile uses Mirrors ModelType vocabulary and ITF value
+semantics: exact decimal integers, booleans, strings, null, sets, sequences,
+tuples, closed records, string-key maps, and tagged variants. Reject opaque
+values and non-string map keys before invoking the SUT. Sets reject semantic
+duplicates, including nested sets/maps whose serialized order differs.
 
-## Values and generated proxies
+The authoritative baseline is the
+[generated-interface specification](https://github.com/NzSN/Mirrors/blob/main/Docs/generated-model-interface-spec.md).
+MirrorGate's [v1 contract](protocol-v1.md) records its narrower supported profile
+and limits. Protocol version, public semantic digest, and runtime version remain
+separate identities.
 
-Use the public model-interface type/value semantics maintained by Mirrors.
-Integers require lossless representation; sets, sequences, tuples, records,
-maps, variants, and null must retain their distinctions. A final encoding must
-define canonicalization, malformed-value rejection, duplicate handling, and
-resource bounds before shims claim compatibility.
+Transport is UTF-8 JSONL with a required LF terminator and 65,535-byte payload
+limit. The public manifest has a separate 262,144-byte limit. Duplicate object
+keys, invalid Unicode, fractional/unsafe numeric tokens, unknown fields,
+over-budget depth/nodes, and invalid value shapes are rejected.
 
-The current cross-language portable profile is narrower than every individual
-client's capabilities: for example, it restricts map key/path support and does
-not include opaque values. A worker must advertise and validate support rather
-than silently truncate or reinterpret an unsupported value. The authoritative
-baseline is the
-[generated-interface specification](https://github.com/NzSN/Mirrors/blob/main/Docs/generated-model-interface-spec.md),
-not a copied type table maintained independently in MirrorGate.
+A trusted proxy implements the generated public port by sending these messages.
+It checks every worker reply's shape, correlation, identity, and typed result.
+The language shim converts values, invokes the real implementation, and returns
+observations. It never receives expected model state or raw `StateComputer`
+arguments. Stderr is bounded separately and carries no trusted verdicts.
 
-A trusted generated proxy implements the public port by sending these messages.
-The language shim converts the serialized public values to native input types,
-calls the submitted implementation, and converts observations back. All shims
-preserve stable action/input/observation IDs and obey the same lifecycle rules.
+## Shared conformance
 
-Start with one shared value contract and generated or small native codecs.
-JSONL over a supervisor-supplied channel is a candidate transport; another
-framed transport can implement the same logical interface. The Mirrors JSONL
-frame bound must not be silently assumed to define this new protocol's limits.
+Use identical positive/negative vectors across validators and workers, then
+exercise lifecycle, reset, cancellation, application failure, crash/EOF,
+malformed output, and cleanup. Node and Rust are the first worker profiles.
+The reference corpus is protocol acceptance evidence; actual sandbox-denial
+checks provide separate isolation evidence. Neither proves observation fidelity.
 
-## Lifecycle and failures
-
-An action completes only when the implementation has finished the work that its
-observer must see. The evaluator requests observation afterward; it never
-substitutes a predicted model value for missing implementation output.
-
-Failures, cancellation, and invalid observations must leave the binding in a
-defined terminal/poisoned state. Specify at-most-once disposal and preserve the
-original failure when cleanup also fails. Do not retry a timed-out mutation
-automatically: its side effects may already have happened.
-
-The trusted evaluator validates every returned shape and message before using
-it. Bound stderr/log output separately from the protocol channel; worker output
-must not be able to impersonate evaluator messages. Private mismatch reports
-are not replies to worker operations.
-
-## Shared conformance suite
-
-Run the same vectors against each shim: successful operation/observation
-sequences, exact integers, collection semantics, initialization/reset,
-malformed inputs, unsupported capabilities, correlation errors, callback
-failures, cancellation, crash/EOF, disposal, and output limits.
-
-At least two languages are needed to validate the claimed shared design. Begin
-with Node and one native language, then extend the matrix. This protocol and
-its conformance corpus should be versioned independently of SDK releases and
-semantic interface digests.
-
-Related: [architecture](architecture.md), [isolation](blind-validation.md),
-and [implementation plan](implementation-plan.md).
+Related: [v1 contract](protocol-v1.md), [architecture](architecture.md),
+[isolation](blind-validation.md), and [implementation plan](implementation-plan.md).

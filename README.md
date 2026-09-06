@@ -8,8 +8,11 @@ evaluation environment, using a language-neutral port protocol.
 
 ## Status
 
-Initial repository setup. The architecture below describes the intended scope;
-no sandbox launcher, worker runtime, or enforced isolation is implemented yet.
+The initial Linux/Bubblewrap profile is implemented, with a Python supervisor,
+Node and Rust workers, strict public-port RPC, and a trusted Node proxy SDK.
+Isolation claims apply to the configured and tested profile, not arbitrary host
+tools. Aggregate cgroup quotas, Windows/macOS backends, and other language shims
+are not implemented. See the [backend's exact limits](docs/linux-bubblewrap.md).
 
 ## Design documents
 
@@ -54,13 +57,15 @@ Repository separation is organizational. Enforced blindness also requires
 restricted access during authoring, building, and execution. An ordinary child
 process or a TypeScript interface alone does not supply that isolation.
 
-## Planned organization
+## Repository organization
 
 ```text
 protocol/       Message schemas, value semantics, lifecycle, and versioning
-supervisor/     Sandbox launch, resource policy, cancellation, and cleanup
-runtimes/       Language-specific shims for Node, C++, Rust, and Lean
+supervisor/     Python policy, snapshots, Bubblewrap launch, and cleanup
+runtimes/       Node and Rust shims; other languages can implement the protocol
+sdk/node/       Trusted evaluator port proxy
 conformance/    Shared positive, malformed-message, and isolation fixtures
+integrations/   Optional trusted evaluator integrations
 docs/           Designs, decisions, and implementation plans
 ```
 
@@ -69,7 +74,49 @@ and value conversion in small language shims. Model resolution and generation
 stay in Mirrors; MirrorGate consumes public interface artifacts without private
 invariant logic or dependencies on MirrorECMA internals.
 
-## Initial development sequence
+## Build and verify
+
+Use Python 3.12, Bubblewrap 0.9 or newer, Node 24.15.0, and Rust 1.96.0 on Linux.
+The backend requires working unprivileged user namespaces and a non-root
+controller. It refuses unsupported isolation; the full test script treats an
+unavailable backend as failure rather than silently skipping it.
+
+```bash
+cargo fetch --manifest-path runtimes/rust/Cargo.toml --locked
+bash scripts/build.sh
+bash scripts/test.sh
+```
+
+The fetch step obtains checksum-locked dependencies; subsequent build/test steps
+use Cargo offline. The Python and Node components use standard libraries only.
+When the installed Rust toolchain has a different local name but is exactly
+1.96.0, select it explicitly with `RUSTUP_TOOLCHAIN`; the build script verifies
+the actual compiler version. This repository does not require a global toolchain
+alias change.
+
+The full gate covers strict Python validation, the shared vector corpus, both
+worker SDKs, actual sandbox access denial, cross-language lifecycle cases, and
+correct/faulty Counter behavior. CI uses the same required-backend gate. Hosted
+CI results are separate from local validation.
+
+## Integrate an evaluator or agent host
+
+- [Node worker and proxy](docs/node-worker.md): `WorkerClient.launch`, native
+  values, lifecycle, cancellation, and cleanup.
+- [Rust worker SDK](docs/rust-worker.md): reusable native adapter trait and
+  correct/faulty Counter worker.
+- [MirrorECMA integration](integrations/mirrorecma/README.md): private model-side
+  replay through generated port proxies, including the queue example.
+- [Authoring host example](examples/authoring-host.py): the trusted host fixes a
+  public workspace once, then accepts only `{argv, cwd}` tool requests. It does
+  not expose administrative profile or host-mount selection to the agent.
+
+`bin/mirrorgate` and `python -m mirrorgate.cli` are administrative interfaces for
+trusted controllers. Giving them unrestricted host invocation to an agent would
+bypass the intended tool boundary. The caller must also keep private prompts,
+retrieval context, credentials, and external tools outside the agent's access.
+
+## Development sequence and status
 
 1. Specify the public worker protocol and its relationship to the existing
    Mirrors model-interface types and semantic digest.
@@ -81,6 +128,6 @@ invariant logic or dependencies on MirrorECMA internals.
 5. Verify equivalent behavior across workers and actual denial of private
    filesystem, process, credential, and network access under the chosen policy.
 
-Implementation language, sandbox backend, and build commands will be documented
-when selected and exercised. No runtime dependency or build system is selected
-by this initial setup.
+The [assigned task tracker](docs/tasks.md) records implementation and evidence.
+The [milestone plan](docs/implementation-plan.md) distinguishes the implemented
+local profile from future backends, additional shims, and release/hosted work.

@@ -1,7 +1,9 @@
 # MirrorGate architecture
 
-Status: recorded design direction; implementation pending. The ownership and
-isolation statements below are requirements, not claims of existing enforcement.
+Status: reference architecture with an initial Linux implementation. The
+[backend guide](linux-bubblewrap.md) and [task evidence](tasks.md) identify the
+implemented restrictions and limitations; broader platform guarantees remain
+requirements rather than verified claims.
 
 MirrorGate is intended to manage access boundaries throughout authoring,
 building, and evaluating an application's adapter and system under test (SUT).
@@ -166,7 +168,8 @@ result disclosure remain separate obligations, as described in
 ## Repository and dependency boundaries
 
 The intended repository areas are `protocol/`, `supervisor/`, `runtimes/`,
-`conformance/`, and `docs/`. Only documentation exists at this stage.
+`conformance/`, and `docs/`. Python supervision and Node/Rust runtime shims are
+implemented; other language workers and backends remain extensions.
 
 Mirrors remains authoritative for model-interface resolution and generation.
 MirrorGate consumes versioned public artifacts and provides SDK/protocol

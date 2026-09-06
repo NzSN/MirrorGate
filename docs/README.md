@@ -1,8 +1,10 @@
 # MirrorGate design index
 
 Recorded on 2026-09-06 from the architecture discussion establishing MirrorGate.
-These documents describe the agreed direction and proposed implementation work.
-No MirrorGate supervisor, worker runtime, or enforced isolation is implemented.
+These documents describe the reference architecture and initial implementation.
+The Linux/Bubblewrap supervisor, Node/Rust workers, protocol, conformance suite,
+and optional evaluator integration are implemented and locally tested. Guarantees
+are limited to the configured backend and documented agent-host integration.
 
 | Document | Read when working on |
 | --- | --- |
@@ -10,6 +12,13 @@ No MirrorGate supervisor, worker runtime, or enforced isolation is implemented.
 | [Blind validation and isolation](blind-validation.md) | Information access during authoring, building, execution, and result disclosure |
 | [Worker protocol](worker-protocol.md) | The public port RPC, value semantics, lifecycle, and compatibility |
 | [Implementation plan](implementation-plan.md) | Milestones, dependencies, acceptance tests, and open decisions |
+| [Assigned tasks and evidence](tasks.md) | Ownership, implemented work, and verification results |
+| [Protocol v1](protocol-v1.md) | Frozen wire/value/lifecycle contract and numerical limits |
+| [Linux/Bubblewrap](linux-bubblewrap.md) | Actual isolation mechanism, profiles, limits, and operational caveats |
+| [Node worker](node-worker.md) | Node adapter and trusted proxy SDK |
+| [Rust worker](rust-worker.md) | Reusable native SDK and Counter binary |
+| [MirrorECMA integration](../integrations/mirrorecma/README.md) | Public port proxies with evaluator-only model data |
+| [Compatibility](compatibility.md) | Supported identities, version changes, and release/hosted limits |
 
 The central decisions are:
 
@@ -23,7 +32,6 @@ The central decisions are:
   proposed evaluator integration, not a required implementation language.
 - Treat isolation and observation fidelity as separate requirements.
 
-The implementation language, first sandbox backend, first native worker,
-concrete wire schema, numerical limits, and release process remain to be chosen.
-Protocol examples and lifecycle names below are design vocabulary, not a frozen
-API or commands that can already be executed.
+The first profile selects Python3.12, Linux/Bubblewrap, Node24.15.0, Rust1.96.0,
+and the concrete v1 protocol. Additional backends/languages, aggregate cgroup
+quotas, production runtime packaging, and release publication remain future work.
