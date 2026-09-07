@@ -1,5 +1,9 @@
 # Linux bubblewrap profile
 
+For a request-by-request explanation with source pointers, read the
+[sandbox design walkthrough](https://github.com/NzSN/MirrorGate/blob/main/docs/sandbox-design.md). This guide records the backend's
+operational requirements and limits.
+
 MirrorGate's first supervisor uses Python 3.12 and rootless bubblewrap 0.9 or
 newer. This is a Linux namespace backend, with no unsandboxed fallback. The
 administrative API and CLI belong to the trusted evaluator. An agent tool gateway

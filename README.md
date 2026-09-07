@@ -22,6 +22,10 @@ the [architecture](docs/architecture.md), [blind-validation requirements](docs/b
 [implementation plan](docs/implementation-plan.md). Open technology and wire
 format decisions are identified explicitly.
 
+The [sandbox design walkthrough](https://github.com/NzSN/MirrorGate/blob/main/docs/sandbox-design.md) follows a tool request
+through trusted configuration, Bubblewrap isolation, monitoring, and cleanup,
+and explains what the implementation agent's host must enforce.
+
 ## Architecture
 
 ```text
