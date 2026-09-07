@@ -26,6 +26,12 @@ The [sandbox design walkthrough](https://github.com/NzSN/MirrorGate/blob/main/do
 through trusted configuration, Bubblewrap isolation, monitoring, and cleanup,
 and explains what the implementation agent's host must enforce.
 
+The proposed [orchestration control v1 contract](https://github.com/NzSN/MirrorGate/blob/main/docs/orchestration-control-v1.md)
+defines the shared process needed by Mirrors client-guide section 13. Its
+[MirrorECMA landing plan](https://github.com/NzSN/MirrorECMA/blob/main/docs/shared-orchestration-design.md)
+separates the control implementation, async replay prerequisites, native
+facade, and cross-language acceptance. These interfaces are not yet shipped.
+
 ## Architecture
 
 ```text

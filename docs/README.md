@@ -9,6 +9,7 @@ are limited to the configured backend and documented agent-host integration.
 | Document | Read when working on |
 | --- | --- |
 | [Architecture](architecture.md) | Repository responsibilities, trusted evaluation, shared infrastructure, and language shims |
+| [Orchestration control v1 — proposed](https://github.com/NzSN/MirrorGate/blob/main/docs/orchestration-control-v1.md) | Shared session workflow, control framing, owner-bound handles, managed worker transport, and cleanup completion for client-guide section 13 |
 | [Sandbox design walkthrough](https://github.com/NzSN/MirrorGate/blob/main/docs/sandbox-design.md) | How a tool request becomes an isolated command, source ownership, and agent-host obligations |
 | [Blind validation and isolation](blind-validation.md) | Information access during authoring, building, execution, and result disclosure |
 | [Worker protocol](worker-protocol.md) | The public port RPC, value semantics, lifecycle, and compatibility |
