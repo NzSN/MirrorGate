@@ -6,19 +6,27 @@ is claimed by this document.
 | Layer | Initial identity / requirement | Verification scope |
 | --- | --- | --- |
 | Worker protocol | `v: 1` JSONL | Shared strict-frame/value corpus and lifecycle tests |
+| Control protocol | Independent `v: 1` JSONL, experimental | Shared strict-frame corpus, owner-bound operations, public CLI and native client gates |
 | Public manifest | `mirrorgate.port/v1` | Sanitized IDs/types plus evaluator-provided interface digest |
 | Supervisor backend | `linux-bubblewrap-v1`, Bubblewrap 0.9 or newer, Python 3.12 | Actual Linux/WSL namespace and resource tests |
 | Node worker | `node-v1`, Node 24.15.0 | Native codec, lifecycle, cancellation, actual Counter and queue |
 | Rust worker | `rust-v1`, Rust 1.96.0 to build | Locked native dependencies, codec/lifecycle, actual Counter |
 | SDK packages | Initial `0.1.0` development sources | Local imports/crate path; publication disabled |
+| Native control clients | Node SDK and C++17 SDK | The same Python controller and Node/Rust worker profiles; C++ owned close reports checked child-reap status |
 | Mirrors semantics | Pinned [source contract](../protocol/source-contract.json) | Portable public type/value definitions, not a runtime dependency |
-| Evaluator integration | Matching MirrorECMA async/report APIs and Mirrors checker | Explicit checkout paths/revisions; Counter in both workers, queue in Node |
+| Evaluator integration | Matching MirrorECMA async/report APIs and Mirrors checker | Explicit checkout paths/revisions; Counter in both workers |
 
 C++ and Lean workers, non-Linux backends, cgroup aggregate quotas, crash-recovery
 garbage collection, and packaged production runtime images remain future work.
 The operator owns and approves the backend's public `/usr`/runtime trees. Their
 contents are not made reproducible merely by pinning the SDK/compiler versions.
 Deployment records must identify those trees and the actual host/kernel policy.
+The [SDK compatibility manifest](https://github.com/NzSN/MirrorGate/blob/main/sdk/compatibility.json)
+records the control/worker versions and build prerequisites. Language SDKs and
+the shared Python process are distributed separately. Package-consumer tests
+establish local installability. The experimental local MirrorECMA/MirrorCPP
+shared matrix is recorded in the linked acceptance ledger; hosted CI,
+publication, and released support remain pending.
 
 Protocol version, public interface digest, frozen artifact hash, runtime profile,
 SDK package version, and private evaluation specification revision have different

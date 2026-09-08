@@ -4,9 +4,28 @@
   "private": true,
   "type": "module",
   "engines": { "node": "24.15.0" },
+  "exports": {
+    "./control": {
+      "types": "./sdk/node/control.d.mts",
+      "import": "./sdk/node/control.mjs"
+    },
+    "./worker": {
+      "types": "./sdk/node/worker.d.mts",
+      "import": "./sdk/node/index.mjs"
+    }
+  },
+  "files": [
+    "sdk/node/*.mjs",
+    "sdk/node/*.d.mts",
+    "sdk/node/README.md",
+    "sdk/compatibility.json"
+  ],
   "scripts": {
     "test": "node --test tests/node/*.test.mjs tests/integration/*.test.mjs",
     "conformance": "node conformance/run.mjs && node conformance/lifecycle.mjs",
     "test:evaluator": "node integrations/mirrorecma/smoke.mjs"
+  },
+  "devDependencies": {
+    "typescript": "6.0.3"
   }
 }

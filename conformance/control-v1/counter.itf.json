@@ -1,0 +1,33 @@
+{
+  "#meta": {
+    "format": "ITF",
+    "varTypes": {
+      "action_taken": "Str",
+      "count": "Int",
+      "parameters": "{ stride: Int }"
+    }
+  },
+  "vars": ["action_taken", "count", "parameters"],
+  "param_vars": [],
+  "params": [],
+  "states": [
+    {
+      "#meta": {"index": 0},
+      "action_taken": "init",
+      "count": {"#bigint": "0"},
+      "parameters": {"stride": {"#bigint": "0"}}
+    },
+    {
+      "#meta": {"index": 1},
+      "action_taken": "tick",
+      "count": {"#bigint": "2"},
+      "parameters": {"stride": {"#bigint": "2"}}
+    },
+    {
+      "#meta": {"index": 2},
+      "action_taken": "tick",
+      "count": {"#bigint": "5"},
+      "parameters": {"stride": {"#bigint": "3"}}
+    }
+  ]
+}

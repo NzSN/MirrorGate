@@ -21,7 +21,7 @@ def checked_directory(path: str | Path) -> Path:
         current /= part
         try:
             info = current.lstat()
-        except OSError as exc:
+        except (OSError, UnicodeError) as exc:
             raise AdmissionError("approved directory is unavailable") from exc
         if not stat.S_ISDIR(info.st_mode):
             raise AdmissionError("approved directory must not contain symlinks or special files")
@@ -35,6 +35,12 @@ class RuntimeMount:
 
     def checked(self) -> "RuntimeMount":
         source = checked_directory(self.source)
+        try:
+            destination_size = len(self.destination.encode("utf-8")) if type(self.destination) is str else 0
+        except UnicodeError as exc:
+            raise AdmissionError("runtime destination must contain Unicode scalars") from exc
+        if type(self.destination) is not str or "\0" in self.destination or destination_size > 1024:
+            raise AdmissionError("runtime destination must be a bounded path")
         dest = PurePosixPath(self.destination)
         if str(dest) != self.destination or ".." in dest.parts:
             raise AdmissionError("runtime destination must be canonical")
@@ -97,9 +103,17 @@ class ToolRequest:
             raise AdmissionError("argv must contain between 1 and 256 arguments")
         if any(type(arg) is not str or not arg or "\0" in arg for arg in self.argv):
             raise AdmissionError("arguments must be nonempty strings without NUL")
-        if sum(len(arg.encode("utf-8")) for arg in self.argv) > 65536:
+        try:
+            argument_bytes = sum(len(arg.encode("utf-8")) for arg in self.argv)
+        except UnicodeError as exc:
+            raise AdmissionError("arguments must contain Unicode scalars") from exc
+        if argument_bytes > 65535:
             raise AdmissionError("arguments exceed the 64 KiB request bound")
-        if type(self.cwd) is not str or "\0" in self.cwd:
+        try:
+            cwd_bytes = len(self.cwd.encode("utf-8")) if type(self.cwd) is str else 0
+        except UnicodeError as exc:
+            raise AdmissionError("cwd must contain Unicode scalars") from exc
+        if type(self.cwd) is not str or "\0" in self.cwd or cwd_bytes > 1024:
             raise AdmissionError("cwd must be a relative directory")
         cwd = PurePosixPath(self.cwd)
         if cwd.is_absolute() or ".." in cwd.parts or str(cwd) != self.cwd:

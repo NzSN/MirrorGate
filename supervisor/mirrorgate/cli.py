@@ -27,7 +27,30 @@ def main(argv=None) -> int:
     run.add_argument("--stderr-bytes", type=int, default=1024**2)
     run.add_argument("--eof-grace-seconds", type=float, default=0.5)
     run.add_argument("command", nargs=argparse.REMAINDER)
+    control = subparsers.add_parser("control", help="serve orchestration control v1")
+    mode = control.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--stdio", action="store_true", help="serve one owned stdin/stdout connection")
+    mode.add_argument("--unix-socket", metavar="PATH", help="serve attached filesystem Unix connections")
+    control.add_argument("--policy-file", required=True, help="operator-owned control policy catalog")
+    control.add_argument("--allowed-uid", type=int, default=os.geteuid(), help="UID admitted by an attached Unix server")
     args = parser.parse_args(argv)
+    if args.operation == "control":
+        try:
+            from .control_server import serve_stream, serve_unix
+            from .preparation import ControlBackend
+            backend = ControlBackend(args.policy_file)
+            try:
+                if args.stdio:
+                    serve_stream(sys.stdin.buffer, sys.stdout.buffer, backend,
+                                 principal_uid=os.geteuid(), connection_mode="stdio")
+                else:
+                    serve_unix(args.unix_socket, backend, allowed_uid=args.allowed_uid)
+            finally:
+                backend.close()
+            return 0
+        except (AdmissionError, OSError, ValueError) as exc:
+            print(f"mirrorgate: control admission rejected: {exc}", file=sys.stderr)
+            return 125
     command = args.command[1:] if args.command[:1] == ["--"] else args.command
     try:
         mounts = list(system_runtime_mounts())

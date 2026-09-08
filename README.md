@@ -26,11 +26,18 @@ The [sandbox design walkthrough](https://github.com/NzSN/MirrorGate/blob/main/do
 through trusted configuration, Bubblewrap isolation, monitoring, and cleanup,
 and explains what the implementation agent's host must enforce.
 
-The proposed [orchestration control v1 contract](https://github.com/NzSN/MirrorGate/blob/main/docs/orchestration-control-v1.md)
-defines the shared process needed by Mirrors client-guide section 13. Its
+The experimental [orchestration control v1 contract](https://github.com/NzSN/MirrorGate/blob/main/docs/orchestration-control-v1.md)
+defines the shared process needed by Mirrors client-guide section 13. The
+[operator policy catalog](docs/control-policy-v1.md) fixes approved roots,
+commands, runtime mounts, launchers, attestation identities, and limit ceilings. The
+[usage guide](https://github.com/NzSN/MirrorGate/blob/main/docs/orchestration-control-usage.md)
+and [implementation tasks](https://github.com/NzSN/MirrorGate/blob/main/docs/orchestration-control-v1-tasks.md)
+cover the controller, immutable preparation, managed transport, and native
+Node/C++ SDKs. Its
 [MirrorECMA landing plan](https://github.com/NzSN/MirrorECMA/blob/main/docs/shared-orchestration-design.md)
 separates the control implementation, async replay prerequisites, native
-facade, and cross-language acceptance. These interfaces are not yet shipped.
+model facade, and cross-language acceptance. The model facades are follow-on
+work; production package publication remains disabled.
 
 ## Architecture
 
@@ -73,7 +80,8 @@ process or a TypeScript interface alone does not supply that isolation.
 protocol/       Message schemas, value semantics, lifecycle, and versioning
 supervisor/     Python policy, snapshots, Bubblewrap launch, and cleanup
 runtimes/       Node and Rust shims; other languages can implement the protocol
-sdk/node/       Trusted evaluator port proxy
+sdk/node/       Trusted control client and worker port proxy
+sdk/cpp/        Native C++ control client and worker port proxy
 conformance/    Shared positive, malformed-message, and isolation fixtures
 integrations/   Optional trusted evaluator integrations
 docs/           Designs, decisions, and implementation plans
@@ -87,25 +95,35 @@ invariant logic or dependencies on MirrorECMA internals.
 ## Build and verify
 
 Use Python 3.12, Bubblewrap 0.9 or newer, Node 24.15.0, and Rust 1.96.0 on Linux.
+The C++ SDK gate additionally requires CMake 3.20 or newer, a C++17 compiler,
+and `nlohmann_json` exactly 3.11.3. The declaration-consumer gate uses the
+development TypeScript compiler selected by the package lockfile.
 The backend requires working unprivileged user namespaces and a non-root
 controller. It refuses unsupported isolation; the full test script treats an
 unavailable backend as failure rather than silently skipping it.
 
 ```bash
 cargo fetch --manifest-path runtimes/rust/Cargo.toml --locked
+npm ci --ignore-scripts
 bash scripts/build.sh
 bash scripts/test.sh
 ```
 
 The fetch step obtains checksum-locked dependencies; subsequent build/test steps
 use Cargo offline. The Python and Node components use standard libraries only.
+The TypeScript compiler is a test-only development dependency. Set
+`MIRRORGATE_NODE_RUNTIME_ROOT` to the approved Node 24.15.0 distribution root
+so actual sandbox workers use the same pinned runtime as the host tests.
+For a headers-only C++ dependency, set `MIRRORGATE_NLOHMANN_JSON_INCLUDE_DIR`
+to the directory containing `nlohmann/json.hpp` from version 3.11.3.
 When the installed Rust toolchain has a different local name but is exactly
 1.96.0, select it explicitly with `RUSTUP_TOOLCHAIN`; the build script verifies
 the actual compiler version. This repository does not require a global toolchain
 alias change.
 
 The full gate covers strict Python validation, the shared vector corpus, both
-worker SDKs, actual sandbox access denial, cross-language lifecycle cases, and
+worker SDKs, both native control clients, actual sandbox access denial,
+public control lifecycle cases, package consumption, and
 correct/faulty Counter behavior. CI uses the same required-backend gate. Hosted
 CI results are separate from local validation.
 

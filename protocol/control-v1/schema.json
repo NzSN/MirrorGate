@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mirrorgate.dev/schema/control-v1.json",
+  "oneOf": [
+    {"$ref": "#/$defs/request"},
+    {"$ref": "#/$defs/success"},
+    {"$ref": "#/$defs/failure"},
+    {"$ref": "#/$defs/event"}
+  ],
+  "$defs": {
+    "safeId": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+    "request": {"type": "object", "required": ["v", "kind", "id", "op", "args"], "properties": {"v": {"const": 1}, "kind": {"const": "request"}, "id": {"$ref": "#/$defs/safeId"}, "op": {"enum": ["hello", "session.open", "authoring.exec", "session.prepare", "session.authorize", "worker.acquire", "worker.release", "session.cancel", "session.close", "session.status", "operation.status"]}, "args": {"type": "object"}}, "additionalProperties": false},
+    "success": {"type": "object", "required": ["v", "kind", "id", "ok", "result"], "properties": {"v": {"const": 1}, "kind": {"const": "response"}, "id": {"$ref": "#/$defs/safeId"}, "ok": {"const": true}, "result": true}, "additionalProperties": false},
+    "failure": {"type": "object", "required": ["v", "kind", "id", "ok", "error"], "properties": {"v": {"const": 1}, "kind": {"const": "response"}, "id": {"$ref": "#/$defs/safeId"}, "ok": {"const": false}, "error": {"$ref": "#/$defs/error"}}, "additionalProperties": false},
+    "error": {"type": "object", "required": ["code", "stage", "message"], "properties": {"code": {"type": "string"}, "stage": {"type": "string"}, "message": {"type": "string"}, "operationId": {"$ref": "#/$defs/safeId"}}, "additionalProperties": false},
+    "event": {"type": "object", "required": ["v", "kind", "seq", "sessionId", "event", "data"], "properties": {"v": {"const": 1}, "kind": {"const": "event"}, "seq": {"$ref": "#/$defs/safeId"}, "sessionId": {"type": "string", "pattern": "^[0-9a-f]{32}$"}, "event": {"enum": ["operation.finished", "authoring.output", "build.output", "worker.started", "worker.ready", "worker.exited", "worker.closing", "session.closed"]}, "data": {"type": "object"}}, "additionalProperties": false}
+  }
+}

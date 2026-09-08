@@ -1,0 +1,299 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+gate_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$gate_root"
+mirrorcpp_root="${MIRRORCPP_ROOT:?MIRRORCPP_ROOT must name a prepared MirrorCPP checkout}"
+mirrors_root="${MIRRORS_ROOT:?MIRRORS_ROOT must name a prepared Mirrors checkout}"
+mirrorecma_root="${MIRRORECMA_ROOT:?MIRRORECMA_ROOT must name a prepared MirrorECMA checkout}"
+mirror_bin="${MIRROR_BIN:-$mirrors_root/.lake/build/bin/mirror}"
+apalache_mc="${APALACHE_MC:?APALACHE_MC must name the exact apalache-mc executable for register acceptance}"
+dependency_cache="${MIRRORCPP_DEPENDENCY_CACHE:-$mirrorcpp_root/build/_deps}"
+evidence_file="${MIRRORGATE_CONTROL_EVIDENCE:-$gate_root/.work/control-v1-acceptance.jsonl}"
+
+[[ "$(node --version)" == "v24.15.0" ]] || { echo 'Node 24.15.0 required' >&2; exit 1; }
+[[ "$(python3 --version)" == "Python 3.12."* ]] || { echo 'Python 3.12 required' >&2; exit 1; }
+[[ "$(rustc --version)" == rustc\ 1.96.0\ * ]] || { echo 'Rust 1.96.0 required' >&2; exit 1; }
+[[ -x "$mirror_bin" ]] || { echo "missing Mirrors executable: $mirror_bin" >&2; exit 1; }
+[[ -x "$apalache_mc" ]] || { echo "missing Apalache executable: $apalache_mc" >&2; exit 1; }
+export APALACHE_MC="$apalache_mc"
+[[ -f "$mirrorcpp_root/include/mirrorcpp/client.hpp" ]] || { echo "invalid MirrorCPP checkout: $mirrorcpp_root" >&2; exit 1; }
+[[ -x "$mirrorecma_root/node_modules/.bin/tsc" ]] || { echo "MirrorECMA locked TypeScript install is missing: $mirrorecma_root" >&2; exit 1; }
+[[ -d "$dependency_cache/nlohmann_json-src" ]] || { echo "missing prepared MirrorCPP dependency cache: $dependency_cache" >&2; exit 1; }
+
+scratch="$(mktemp -d)"
+daemon_pid=""
+cleanup() {
+  if [[ -n "$daemon_pid" ]]; then
+    kill "$daemon_pid" 2>/dev/null || true
+    wait "$daemon_pid" 2>/dev/null || true
+  fi
+  rm -rf "$scratch"
+}
+trap cleanup EXIT
+
+mkdir -p "$scratch/submissions/node-correct" "$scratch/submissions/node-faulty" \
+  "$scratch/submissions/node-pending" "$scratch/submissions/rust" \
+  "$(dirname "$evidence_file")"
+cp "$gate_root/runtimes/node/examples/counter.mjs" "$scratch/submissions/node-correct/adapter.mjs"
+cp "$gate_root/runtimes/node/examples/faulty-counter.mjs" "$scratch/submissions/node-faulty/adapter.mjs"
+cp "$gate_root/runtimes/node/examples/counter.mjs" "$scratch/submissions/node-faulty/counter.mjs"
+cp "$gate_root/conformance/control-v1/pending-counter.mjs" "$scratch/submissions/node-pending/adapter.mjs"
+
+bash "$gate_root/scripts/build.sh"
+rust_worker="$gate_root/runtimes/rust/target/debug/mirrorgate-counter-worker"
+[[ -x "$rust_worker" ]] || { echo "missing pinned Rust worker: $rust_worker" >&2; exit 1; }
+cp "$rust_worker" "$scratch/submissions/rust/worker"
+
+cmake -S "$gate_root/integrations/mirrorcpp" -B "$scratch/cpp-build" \
+  -DMIRRORCPP_ROOT="$mirrorcpp_root" \
+  -DMIRRORCPP_DEPENDENCY_CACHE="$dependency_cache" \
+  -DBUILD_TESTING=OFF
+cmake --build "$scratch/cpp-build" --parallel
+driver="$scratch/cpp-build/mirrorgate_mirrorcpp_counter"
+"$scratch/cpp-build/mirrorgate_mirrorcpp_receipt_tests"
+
+consumer="$scratch/ts-consumer"
+ecma_package="$consumer/node_modules/mirrorecma"
+gate_package="$consumer/node_modules/mirrorgate"
+mkdir -p "$ecma_package" "$gate_package" "$scratch/npm-pack"
+"$mirrorecma_root/node_modules/.bin/tsc" -p "$mirrorecma_root/tsconfig.sandbox.json" \
+  --outDir "$ecma_package/dist-sandbox"
+printf '%s\n' '{"name":"mirrorecma","type":"module","main":"./dist-sandbox/src/index.js"}' \
+  > "$ecma_package/package.json"
+npm_config_cache="$scratch/npm-cache" npm pack --pack-destination "$scratch/npm-pack" \
+  --silent >/dev/null
+gate_archive="$(find "$scratch/npm-pack" -maxdepth 1 -name '*.tgz' -print -quit)"
+[[ -f "$gate_archive" ]] || { echo 'MirrorGate package archive was not produced' >&2; exit 1; }
+tar -xzf "$gate_archive" --strip-components=1 -C "$gate_package"
+ts_driver="$ecma_package/dist-sandbox/test/sandbox-counter.smoke.js"
+[[ -f "$ts_driver" ]] || { echo "MirrorECMA sandbox smoke was not compiled: $ts_driver" >&2; exit 1; }
+manifest="$gate_root/conformance/manifests/counter.json"
+trace="$gate_root/conformance/control-v1/counter.itf.json"
+spec="$mirrors_root/specs/Counter.tla"
+: > "$evidence_file"
+
+run_case() {
+  local control_mode="$1" runtime="$2" outcome="$3"
+  local policy_id="accept.cpp.${runtime}.${outcome}"
+  local policy="$scratch/${control_mode}-${runtime}-${outcome}.policy.json"
+  local relative
+  local fixture_args=("$policy" "$scratch/submissions" --policy-id "$policy_id" \
+    --adapter-id "mirrorgate/$runtime" --target-profile mirrorcpp-v1)
+  if [[ "$runtime" == "node-v1" ]]; then
+    case "$outcome" in
+      correct|generate-correct|wrong-digest) relative="node-correct" ;;
+      faulty|generate-faulty) relative="node-faulty" ;;
+      *) echo "unknown C++ scenario: $outcome" >&2; exit 1 ;;
+    esac
+    fixture_args+=(--runtime node --artifact-entry adapter.mjs)
+  else
+    relative="rust"
+    fixture_args+=(--runtime rust --artifact-entry worker)
+    [[ "$outcome" == "faulty" || "$outcome" == "generate-faulty" ]] && fixture_args+=(--faulty)
+  fi
+  python3 "$gate_root/tests/control_policy_fixture.py" "${fixture_args[@]}" >/dev/null
+
+  local endpoint="$gate_root/bin/mirrorgate"
+  if [[ "$control_mode" == "attached" ]]; then
+    local socket_dir="$scratch/socket-${runtime}-${outcome}"
+    mkdir "$socket_dir" && chmod 0700 "$socket_dir"
+    endpoint="$socket_dir/control.sock"
+    "$gate_root/bin/mirrorgate" control --unix-socket "$endpoint" --policy-file "$policy" &
+    daemon_pid=$!
+    for _ in {1..200}; do [[ -S "$endpoint" ]] && break; sleep 0.01; done
+    [[ -S "$endpoint" ]] || { echo "attached Gate did not create $endpoint" >&2; exit 1; }
+  fi
+
+  "$driver" "$control_mode" "$endpoint" "$policy" "$policy_id" "$manifest" \
+    "$relative" "$runtime" "$mirror_bin" "$spec" "$trace" "$outcome" | tee -a "$evidence_file"
+
+  if [[ "$control_mode" == "attached" ]]; then
+    kill "$daemon_pid"
+    wait "$daemon_pid" 2>/dev/null || true
+    daemon_pid=""
+  fi
+}
+
+for control_mode in owned attached; do
+  for runtime in node-v1 rust-v1; do
+    run_case "$control_mode" "$runtime" correct
+    run_case "$control_mode" "$runtime" faulty
+    run_case "$control_mode" "$runtime" wrong-digest
+    run_case "$control_mode" "$runtime" generate-correct
+    run_case "$control_mode" "$runtime" generate-faulty
+  done
+done
+
+run_typescript_case() {
+  local control_mode="$1" runtime="$2" scenario="$3"
+  local policy_id="accept.typescript.${runtime}.${scenario}"
+  local policy="$scratch/typescript-${control_mode}-${runtime}-${scenario}.policy.json"
+  local relative
+  local fixture_args=("$policy" "$scratch/submissions" --policy-id "$policy_id" \
+    --adapter-id counter.generated-async-v1 --target-profile mirrorecma-async-v1 \
+    --state-computer-contract-version mirrors.async-state-computer/v1)
+  if [[ "$runtime" == "node-v1" ]]; then
+    case "$scenario" in
+      correct|wrong-digest|generate-correct|source-author) relative="node-correct" ;;
+      faulty|generate-faulty) relative="node-faulty" ;;
+      cancel) relative="node-pending" ;;
+      *) echo "unknown TypeScript scenario: $scenario" >&2; exit 1 ;;
+    esac
+    fixture_args+=(--runtime node --artifact-entry adapter.mjs)
+  else
+    relative="rust"
+    fixture_args+=(--runtime rust --artifact-entry worker)
+    [[ "$scenario" == "faulty" || "$scenario" == "generate-faulty" ]] && fixture_args+=(--faulty)
+  fi
+  python3 "$gate_root/tests/control_policy_fixture.py" "${fixture_args[@]}" >/dev/null
+
+  local endpoint="$gate_root/bin/mirrorgate"
+  if [[ "$control_mode" == "attached" ]]; then
+    local socket_dir="$scratch/socket-typescript-${runtime}-${scenario}"
+    mkdir "$socket_dir" && chmod 0700 "$socket_dir"
+    endpoint="$socket_dir/control.sock"
+    "$gate_root/bin/mirrorgate" control --unix-socket "$endpoint" --policy-file "$policy" &
+    daemon_pid=$!
+    for _ in {1..200}; do [[ -S "$endpoint" ]] && break; sleep 0.01; done
+    [[ -S "$endpoint" ]] || { echo "attached Gate did not create $endpoint" >&2; exit 1; }
+  fi
+
+  MIRRORECMA_ROOT="$mirrorecma_root" node "$ts_driver" "$control_mode" "$endpoint" \
+    "$policy" "$policy_id" "$relative" "$runtime" "$mirror_bin" "$spec" "$trace" \
+    "$scenario" | tee -a "$evidence_file"
+
+  if [[ "$control_mode" == "attached" ]]; then
+    kill "$daemon_pid"
+    wait "$daemon_pid" 2>/dev/null || true
+    daemon_pid=""
+  fi
+}
+
+for control_mode in owned attached; do
+  for runtime in node-v1 rust-v1; do
+    run_typescript_case "$control_mode" "$runtime" correct
+    run_typescript_case "$control_mode" "$runtime" faulty
+    run_typescript_case "$control_mode" "$runtime" wrong-digest
+    run_typescript_case "$control_mode" "$runtime" generate-correct
+    run_typescript_case "$control_mode" "$runtime" generate-faulty
+  done
+done
+run_typescript_case owned node-v1 source-author
+run_typescript_case owned node-v1 cancel
+
+python3 - "$evidence_file" "$gate_root" "$mirrorcpp_root" "$mirrorecma_root" \
+  "$mirrors_root" "$gate_archive" "$MIRRORGATE_NODE_RUNTIME_ROOT" "$apalache_mc" <<'PY'
+import hashlib, json, os, pathlib, subprocess, sys
+evidence, gate, cpp, ecma, mirrors, gate_archive, node_runtime, apalache = map(pathlib.Path, sys.argv[1:])
+rows = [json.loads(line) for line in evidence.read_text().splitlines()]
+assert len(rows) == 42, len(rows)
+required = {'schema', 'facade', 'controlMode', 'workerRuntime', 'backend', 'sut',
+            'resultStatus', 'cleanup', 'replay'}
+assert all(required <= set(row) for row in rows)
+assert all(row['schema'] == 'mirrors.shared-orchestration-evidence/v1' and
+           row['backend'] == 'linux-bubblewrap-v1' for row in rows)
+matrix = [row for row in rows if row['sut'] not in ('source-author', 'cancel')]
+assert len(matrix) == 40
+assert {(r['facade'], r['controlMode'], r['workerRuntime'], r['sut']) for r in matrix} == {
+    (facade, control, worker, sut)
+    for facade in ('mirrorcpp', 'typescript')
+    for control in ('owned', 'attached')
+    for worker in ('node-v1', 'rust-v1')
+    for sut in ('correct', 'faulty', 'wrong-digest', 'generate-correct', 'generate-faulty')
+}
+extras = [row for row in rows if row['sut'] in ('source-author', 'cancel')]
+assert {(r['facade'], r['controlMode'], r['workerRuntime'], r['sut']) for r in extras} == {
+    ('typescript', 'owned', 'node-v1', 'source-author'),
+    ('typescript', 'owned', 'node-v1', 'cancel'),
+}
+for row in rows:
+    assert row['cleanup'] in ({'succeeded'} if row['facade'] == 'mirrorcpp' else {'confirmed'})
+    expected = ('passed' if row['sut'] in ('correct', 'generate-correct', 'source-author') else
+                'cancelled' if row['sut'] == 'cancel' else
+                'negotiation-rejected' if row['facade'] == 'mirrorcpp' and row['sut'] == 'wrong-digest' else
+                'failed' if row['sut'] == 'wrong-digest' else 'mismatch')
+    assert row['resultStatus'] == expected, row
+    assert row['replay'] == ('generate' if row['sut'].startswith('generate-') else 'traces')
+    if row['facade'] == 'mirrorcpp':
+        assert row['controlShutdown'] == 'confirmed'
+        expected_process = {'exited', 'signaled', 'reaped-unknown'} \
+            if row['controlMode'] == 'owned' else {'not-owned'}
+        assert row['controlProcessState'] in expected_process, row
+for row in matrix:
+    if row['facade'] == 'mirrorcpp':
+        assert row['controlShutdown'] == 'confirmed'
+        assert row['controlProcessState'] in (
+            {'exited', 'signaled', 'reaped-unknown'}
+            if row['controlMode'] == 'owned' else {'not-owned'})
+    if row['facade'] == 'mirrorcpp' and row['sut'] == 'wrong-digest':
+        assert (row['bindingFactoryCalls'], row['workerAcquisitions'], row['workerStartedEvents']) == (0, 0, 0)
+    if row['facade'] == 'typescript' and row['sut'] == 'wrong-digest':
+        assert (row['authorizations'], row['workerAcquisitions'], row['workerConnections']) == (0, 0, 0)
+cancel = next(row for row in extras if row['sut'] == 'cancel')
+assert cancel['tickDispatched'] is True
+
+def revision(path):
+    return subprocess.check_output(['git', '-C', path, 'rev-parse', 'HEAD'], text=True).strip()
+def output(*args, cwd=None):
+    return subprocess.check_output(args, cwd=cwd, stderr=subprocess.STDOUT, text=True, timeout=60).strip()
+def sha256(path):
+    digest = hashlib.sha256()
+    with path.open('rb') as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+            digest.update(chunk)
+    return digest.hexdigest()
+def workspace(path):
+    names = subprocess.check_output(
+        ['git', '-C', path, 'ls-files', '-co', '--exclude-standard', '-z']).split(b'\0')
+    digest = hashlib.sha256()
+    for raw in sorted(name for name in names if name):
+        relative = raw.decode('utf-8', 'surrogateescape')
+        target = path / relative
+        digest.update(raw + b'\0')
+        digest.update(bytes.fromhex(sha256(target)) if target.is_file() else b'<missing>')
+    status = subprocess.check_output(
+        ['git', '-C', path, 'status', '--porcelain=v1', '-z']).decode('utf-8', 'surrogateescape')
+    return {'head': revision(path), 'workspaceSha256': digest.hexdigest(), 'statusPorcelainV1Z': status}
+
+summary = {
+    'schema': 'mirrorgate.control-acceptance-summary/v1',
+    'status': 'green', 'rows': len(rows), 'backend': 'linux-bubblewrap-v1',
+    'gateRevision': revision(gate), 'mirrorcppRevision': revision(cpp),
+    'mirrorecmaRevision': revision(ecma),
+    'mirrorsRevision': revision(mirrors),
+}
+manifest = {
+    'schema': 'mirrors.shared-orchestration-reproducibility/v1',
+    'summary': summary,
+    'repositories': {name: workspace(path) for name, path in
+        [('MirrorGate', gate), ('MirrorCPP', cpp), ('MirrorECMA', ecma), ('Mirrors', mirrors)]},
+    'gateSdk': {
+        'version': json.loads((gate / 'package.json').read_text())['version'],
+        'archiveSha256': sha256(gate_archive),
+    },
+    'toolchain': {
+        'node': output('node', '--version'),
+        'python': output('python3', '--version'),
+        'rust': output('rustc', '--version'),
+        'cxx': output('c++', '--version').splitlines()[0],
+        'cmake': output('cmake', '--version').splitlines()[0],
+        'typescript': output(str(ecma / 'node_modules/.bin/tsc'), '--version'),
+        'lean': output('lake', 'env', 'lean', '--version', cwd=mirrors),
+        'apalache': output(str(apalache), 'version').splitlines()[0],
+        'bubblewrap': output('bwrap', '--version'),
+        'kernel': output('uname', '-srvmo'),
+    },
+    'artifacts': {
+        'mirrorsBinarySha256': sha256(pathlib.Path(os.environ.get('MIRROR_BIN', mirrors / '.lake/build/bin/mirror'))),
+        'nodeRuntimeRoot': str(node_runtime.resolve()),
+        'nodeRuntimeVersion': output(str(node_runtime / 'bin/node'), '--version'),
+        'nodeRuntimeBinarySha256': sha256(node_runtime / 'bin/node'),
+    },
+}
+manifest_path = pathlib.Path(str(evidence) + '.manifest.json')
+manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n')
+print(json.dumps(summary, separators=(',', ':')))
+print(json.dumps({'reproducibilityManifest': str(manifest_path),
+                  'manifestSha256': sha256(manifest_path)}, separators=(',', ':')))
+PY

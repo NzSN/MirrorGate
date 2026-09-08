@@ -4,6 +4,7 @@ import {
   exact, encodeFields, decodeFields,
 } from './protocol.mjs';
 export {ProtocolError} from './protocol.mjs';
+export {createPublicManifest, toWorkerValue, fromWorkerValue} from './public-model.mjs';
 
 const fail = (code, message) => new ProtocolError(code, message);
 const duration = (label, value) => {
@@ -11,7 +12,7 @@ const duration = (label, value) => {
   return value;
 };
 function freeze(value) { if (value && typeof value === 'object') { Object.values(value).forEach(freeze); Object.freeze(value); } return value; }
-function prepare(options = {}) {
+function prepare(options = {}, {managed = false} = {}) {
   const manifest = freeze(validateManifest(parseJson(JSON.stringify(options.manifest), LIMITS.manifestBytes)));
   const runtime = options.runtime;
   if (typeof runtime !== 'string' || !/^[A-Za-z][A-Za-z0-9_.-]{0,127}$/.test(runtime)) throw fail('SCHEMA', 'A trusted runtime profile is required');
@@ -19,7 +20,7 @@ function prepare(options = {}) {
   const cancellationGraceMs = duration('cancellationGraceMs', options.cancellationGraceMs ?? 250);
   const cleanupTimeoutMs = duration('cleanupTimeoutMs', options.cleanupTimeoutMs ?? 3000);
   const terminationGraceMs = duration('terminationGraceMs', options.terminationGraceMs ?? 1000);
-  if (terminationGraceMs >= cleanupTimeoutMs) throw fail('SCHEMA', 'Termination grace must be shorter than cleanup deadline');
+  if (!managed && terminationGraceMs >= cleanupTimeoutMs) throw fail('SCHEMA', 'Termination grace must be shorter than cleanup deadline');
   const stderrLimit = duration('stderrLimit', options.stderrLimit ?? 65536);
   if (options.onStderr !== undefined && typeof options.onStderr !== 'function') throw fail('SCHEMA', 'Invalid evaluator log consumer');
   return {manifest, runtime, timeoutMs, cancellationGraceMs, cleanupTimeoutMs, terminationGraceMs, stderrLimit, onStderr: options.onStderr};
@@ -75,13 +76,28 @@ export class WorkerClient {
     catch (error) { client._fatal(error); await client._stop().catch(() => {}); throw error; }
   }
 
+  /** Gate-managed transport: worker protocol stays local; process lifecycle stays in Gate. */
+  static async fromManagedTransport(transport, options) {
+    if (!transport?.managed || typeof transport.beginRelease !== 'function' || typeof transport.finishRelease !== 'function' || typeof transport.requestCancellation !== 'function') throw fail('SCHEMA', 'Invalid Gate-managed worker transport');
+    const client = new WorkerClient(transport, options);
+    try {
+      const started = client.start();
+      transport.readable.resume?.();
+      await started;
+      return client;
+    }
+    catch (error) { client._fatal(error); await client._stop().catch(() => {}); throw error; }
+  }
+
   constructor(transport, options) {
-    const checked = prepare(options);
+    const checked = prepare(options, {managed: transport?.managed === true});
     if (!transport?.readable || !transport.writable || typeof transport.terminate !== 'function' || typeof transport.closed?.then !== 'function') throw fail('SCHEMA', 'Isolated transport requires streams, terminate, and a closed promise');
     Object.assign(this, checked);
     this.transport = transport;
+    this.managed = transport.managed === true;
     this.state = 'awaitHello'; this.nextId = 1; this.pending = null; this.cancelPending = null;
     this.terminalError = null; this.primaryError = null; this.closing = false; this.closePromise = null; this.stopPromise = null;
+    this.skipDispose = false; this.stopReason = 'normal';
     this.operations = new Map([...this.manifest.initializers, ...this.manifest.actions].map(action => [action.id, action]));
     this.initializers = new Set(this.manifest.initializers.map(action => action.id));
     this.decoder = new FrameDecoder(reply => this._receive(reply));
@@ -146,6 +162,11 @@ export class WorkerClient {
   _cancel(entry, reason) {
     if (this.pending !== entry || entry.cancelled || this.terminalError) return;
     entry.cancelled = reason; this.state = 'poisoned'; this.primaryError ??= reason;
+    this.skipDispose = true;
+    this.stopReason = reason.code === 'TIMEOUT' ? 'deadline' : 'user-cancel';
+    if (this.managed) {
+      try { Promise.resolve(this.transport.requestCancellation(this.stopReason)).catch(() => {}); } catch {}
+    }
     clearTimeout(entry.timer);
     // A cleanup callback cannot be interrupted by another protocol request.
     if (entry.request.op === 'dispose') { this._fatal(reason); return; }
@@ -175,6 +196,7 @@ export class WorkerClient {
       this.state = 'poisoned';
       if (entry.cancelled && reply.error.code !== 'CANCELLED') throw fail('SCHEMA', 'Cancelled operation returned another outcome');
       const error = entry.cancelled ?? fail(reply.error.code, reply.error.message); this.primaryError ??= error;
+      if (this.managed && !entry.cancelled && this.stopReason === 'normal') this.stopReason = 'worker-failure';
       this._settle(entry, error); return;
     }
     if (entry.cancelled) throw fail('SCHEMA', 'Cancelled operation returned success');
@@ -191,7 +213,12 @@ export class WorkerClient {
     if (this.terminalError) return;
     this.terminalError = error instanceof ProtocolError ? error : fail('CLOSED', error?.message ?? 'Worker transport failed');
     this.primaryError ??= this.terminalError; this.state = 'poisoned';
-    if (this.pending) this._settle(this.pending, this.terminalError);
+    this.skipDispose = true;
+    if (this.stopReason === 'normal') this.stopReason = this.terminalError.code === 'TIMEOUT' ? 'deadline' : 'worker-failure';
+    if (this.pending) {
+      const pendingError = this.pending.cancelled && this.terminalError.code === 'CLOSED' ? this.pending.cancelled : this.terminalError;
+      this._settle(this.pending, pendingError);
+    }
     if (this.cancelPending) { clearTimeout(this.cancelPending.grace); this.cancelPending = null; }
     this._stop().catch(() => {});
   }
@@ -202,7 +229,7 @@ export class WorkerClient {
       let timer;
       try {
         await Promise.race([
-          Promise.resolve().then(() => this.transport.terminate()).then(() => this.transport.closed),
+          Promise.resolve().then(() => this.transport.terminate(this.stopReason)).then(() => this.transport.closed),
           new Promise((_, reject) => { timer = setTimeout(() => reject(fail('CLEANUP', 'Supervisor cleanup deadline exceeded')), this.cleanupTimeoutMs); }),
         ]);
       } finally { clearTimeout(timer); }
@@ -223,13 +250,24 @@ export class WorkerClient {
       }
       const originalError = this.primaryError;
       let cleanupError;
+      let managedRelease;
+      let managedFinished = false;
       try {
-        if (!this.terminalError && this.state !== 'awaitHello' && this.state !== 'disposed') await this._call('dispose');
+        if (this.managed) {
+          managedRelease = await this.transport.beginRelease(this.stopReason);
+          if (managedRelease.cleanupMode === 'dispose-then-terminate' && !this.skipDispose && !this.terminalError && this.state !== 'awaitHello' && this.state !== 'disposed') await this._call('dispose');
+          await this.transport.finishRelease(managedRelease);
+          managedFinished = true;
+        } else if (!this.terminalError && this.state !== 'awaitHello' && this.state !== 'disposed') await this._call('dispose');
       } catch (error) { cleanupError = error; }
       finally {
         this.state = 'disposed';
         try { this.transport.writable.end(); } catch {}
-        try { await this._stop(); } catch (error) { cleanupError ??= error; }
+        if (this.managed && managedRelease && !managedFinished) {
+          try { await this.transport.finishRelease(managedRelease); } catch (error) { cleanupError ??= error; }
+        } else if (!this.managed || !managedRelease) {
+          try { await this._stop(); } catch (error) { cleanupError ??= error; }
+        }
       }
       // A cleanup failure must never replace a previously reported operation failure.
       if (cleanupError && !originalError) throw cleanupError;
@@ -248,3 +286,5 @@ export function createPortProxy(client) {
     dispose: () => client.close(),
   });
 }
+
+export {createManagedWorker} from './managed-worker.mjs';

@@ -13,6 +13,7 @@ export async function prepareWorker(runtime, {faulty = false, manifest = counter
   try {
     await writeFile(join(directory, 'port.json'), JSON.stringify(manifest));
     let command;
+    const runtimeArgs = [];
     if (runtime === 'node-v1') {
       await mkdir(join(directory, 'runtimes/node'), {recursive: true});
       await mkdir(join(directory, 'sdk/node'), {recursive: true});
@@ -25,7 +26,13 @@ export async function prepareWorker(runtime, {faulty = false, manifest = counter
         if (!/^[A-Za-z0-9_.-]+$/.test(name)) throw new Error('Extra fixture files must be flat public files');
         await writeFile(join(directory, name), bytes);
       }
-      command = ['/usr/local/bin/node', '/artifact/runtimes/node/worker.mjs', '--manifest', '/artifact/port.json', '--adapter', '/artifact/adapter.mjs'];
+      const nodeRuntimeRoot = process.env.MIRRORGATE_NODE_RUNTIME_ROOT;
+      if (nodeRuntimeRoot !== undefined) {
+        if (!nodeRuntimeRoot.trim()) throw new Error('MIRRORGATE_NODE_RUNTIME_ROOT must name an approved runtime directory');
+        runtimeArgs.push('--runtime-root', `${resolve(nodeRuntimeRoot)}:/runtime/node`);
+      }
+      const node = nodeRuntimeRoot === undefined ? '/usr/local/bin/node' : '/runtime/node/bin/node';
+      command = [node, '/artifact/runtimes/node/worker.mjs', '--manifest', '/artifact/port.json', '--adapter', '/artifact/adapter.mjs'];
     } else if (runtime === 'rust-v1') {
       const binary = process.env.MIRRORGATE_RUST_WORKER ?? join(gateRoot, 'runtimes/rust/target/debug/mirrorgate-counter-worker');
       await cp(binary, join(directory, 'worker'));
@@ -35,7 +42,7 @@ export async function prepareWorker(runtime, {faulty = false, manifest = counter
       directory, manifest, runtime,
       supervisor: {
         command: process.env.MIRRORGATE_PYTHON ?? '/usr/bin/python3',
-        args: ['-m', 'mirrorgate.cli', 'run', '--profile', 'execution', '--workspace', directory, '--wall-seconds', '30', '--', ...command],
+        args: ['-m', 'mirrorgate.cli', 'run', '--profile', 'execution', '--workspace', directory, '--wall-seconds', '30', ...runtimeArgs, '--', ...command],
         cwd: gateRoot,
         env: {...process.env, PYTHONPATH: join(gateRoot, 'supervisor')},
       },

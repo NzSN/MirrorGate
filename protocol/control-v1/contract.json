@@ -1,0 +1,526 @@
+{
+  "schema": "mirrorgate.control-contract/v1",
+  "version": 1,
+  "framing": {
+    "maxFrameBytes": 1048576,
+    "maxJsonDepth": 128,
+    "maxJsonNodes": 16384,
+    "maxErrorMessageBytes": 1024,
+    "maxOutputChunkBytes": 16384,
+    "maxAttachmentFrameBytes": 4096
+  },
+  "envelopes": {
+    "request": [
+      "v",
+      "kind",
+      "id",
+      "op",
+      "args"
+    ],
+    "success": [
+      "v",
+      "kind",
+      "id",
+      "ok",
+      "result"
+    ],
+    "failure": [
+      "v",
+      "kind",
+      "id",
+      "ok",
+      "error"
+    ],
+    "event": [
+      "v",
+      "kind",
+      "seq",
+      "sessionId",
+      "event",
+      "data"
+    ]
+  },
+  "operations": {
+    "hello": {
+      "args": [
+        "controlVersions",
+        "requiredCapabilities"
+      ],
+      "result": "Hello"
+    },
+    "session.open": {
+      "args": [
+        "policyId",
+        "submission",
+        "runtime",
+        "manifestJson",
+        "limits?",
+        "modelRevisionId?"
+      ],
+      "result": "SessionOpened"
+    },
+    "authoring.exec": {
+      "args": [
+        "sessionId",
+        "toolId",
+        "arguments",
+        "cwd"
+      ],
+      "result": "Accepted",
+      "terminal": "CommandResult"
+    },
+    "session.prepare": {
+      "args": [
+        "sessionId"
+      ],
+      "result": "Accepted",
+      "terminal": "Prepared"
+    },
+    "session.authorize": {
+      "args": [
+        "sessionId",
+        "preparedRevision",
+        "challenge",
+        "attestation"
+      ],
+      "result": "Authorized"
+    },
+    "worker.acquire": {
+      "args": [
+        "sessionId",
+        "authorizationId"
+      ],
+      "result": "WorkerDescriptor"
+    },
+    "worker.release": {
+      "args": [
+        "sessionId",
+        "workerId",
+        "reason"
+      ],
+      "result": "WorkerReleaseAccepted",
+      "terminal": "CleanupResult"
+    },
+    "session.cancel": {
+      "args": [
+        "sessionId",
+        "reason"
+      ],
+      "result": "Accepted",
+      "terminal": "CleanupResult"
+    },
+    "session.close": {
+      "args": [
+        "sessionId",
+        "outcomeSummary?"
+      ],
+      "result": "Accepted",
+      "terminal": "CleanupResult"
+    },
+    "session.status": {
+      "args": [
+        "sessionId"
+      ],
+      "result": "SessionStatus"
+    },
+    "operation.status": {
+      "args": [
+        "sessionId",
+        "operationId"
+      ],
+      "result": "OperationStatus"
+    }
+  },
+  "records": {
+    "Hello": [
+      "controlVersion",
+      "instanceId",
+      "capabilities",
+      "limits"
+    ],
+    "Capability": [
+      "id",
+      "available",
+      "enforcedScope",
+      "limits",
+      "reason?"
+    ],
+    "SessionOpened": [
+      "sessionId"
+    ],
+    "Accepted": [
+      "operationId"
+    ],
+    "CommandResult": [
+      "exitCode",
+      "stdoutBytes",
+      "stderrBytes"
+    ],
+    "Prepared": [
+      "preparedRevision",
+      "artifactId",
+      "artifactHash",
+      "sourceHash?",
+      "manifestHash",
+      "runtime",
+      "policyId",
+      "challenge"
+    ],
+    "Authorized": [
+      "authorizationId"
+    ],
+    "WorkerDescriptor": [
+      "workerId",
+      "endpoint",
+      "attachmentToken",
+      "attachmentTimeoutMs",
+      "releaseMode"
+    ],
+    "WorkerReleaseAccepted": [
+      "operationId",
+      "cleanupMode"
+    ],
+    "OperationPending": [
+      "operationId",
+      "status"
+    ],
+    "OperationSucceeded": [
+      "operationId",
+      "status",
+      "result"
+    ],
+    "OperationFailed": [
+      "operationId",
+      "status",
+      "error"
+    ],
+    "SessionStatus": [
+      "phase",
+      "resources",
+      "cleanup"
+    ],
+    "CleanupResult": [
+      "phase",
+      "cleanupStatus",
+      "remainingResources"
+    ],
+    "ControlError": [
+      "code",
+      "stage",
+      "message",
+      "operationId?"
+    ]
+  },
+  "nestedRecords": {
+    "InputRef": {
+      "required": [
+        "rootId",
+        "relativePath"
+      ],
+      "optional": []
+    },
+    "PrebuiltSubmission": {
+      "required": [
+        "kind",
+        "input"
+      ],
+      "optional": [],
+      "kind": "prebuilt"
+    },
+    "SourceSubmission": {
+      "required": [
+        "kind",
+        "input",
+        "buildPlanId",
+        "authoring"
+      ],
+      "optional": [],
+      "kind": "source"
+    },
+    "Endpoint": {
+      "required": [
+        "kind",
+        "path"
+      ],
+      "optional": [],
+      "kind": "unix"
+    },
+    "Resources": {
+      "required": [
+        "authoringProcesses",
+        "buildProcesses",
+        "workers",
+        "snapshots"
+      ],
+      "optional": []
+    },
+    "Cleanup": {
+      "required": [
+        "status",
+        "remainingResources"
+      ],
+      "optional": []
+    },
+    "OutcomeSummary": {
+      "required": [
+        "status"
+      ],
+      "optional": [
+        "failureFamily"
+      ]
+    },
+    "Attestation": {
+      "required": [
+        "registrationId",
+        "request",
+        "policy",
+        "status",
+        "descriptorSchema",
+        "semanticDigest",
+        "adapterId",
+        "targetProfile",
+        "stateComputerContractVersion"
+      ],
+      "optional": [],
+      "constants": {
+        "request": "verify",
+        "policy": "require",
+        "status": "matched",
+        "descriptorSchema": "mirrors.model-interface-descriptor/v1"
+      }
+    },
+    "HelloLimits": {
+      "required": [
+        "maxFrameBytes",
+        "maxJsonDepth",
+        "maxJsonNodes",
+        "maxPendingOutputBytes",
+        "maxSessionsPerConnection",
+        "maxInflightRequestsPerConnection",
+        "maxCompletedOperationsPerSession",
+        "helloTimeoutMs",
+        "requestAckTimeoutMs",
+        "workerAttachmentTimeoutMs",
+        "sessionWallMs",
+        "gracefulStopMs",
+        "teardownMs"
+      ],
+      "optional": []
+    },
+    "TightenedLimits": {
+      "required": [],
+      "optional": [
+        "sessionWallMs",
+        "executionWallMs",
+        "commandCpuSeconds",
+        "addressSpaceBytes",
+        "uidProcesses",
+        "openFiles",
+        "fileBytes",
+        "stdoutBytes",
+        "stderrBytes",
+        "snapshotFiles",
+        "snapshotBytes",
+        "tmpBytes",
+        "scratchBytes"
+      ]
+    },
+    "CapabilityLimits": {
+      "required": [],
+      "optional": [
+        "maxFrameBytes",
+        "maxJsonDepth",
+        "maxJsonNodes",
+        "maxPendingOutputBytes",
+        "maxSessionsPerConnection",
+        "maxInflightRequestsPerConnection",
+        "maxCompletedOperationsPerSession",
+        "helloTimeoutMs",
+        "requestAckTimeoutMs",
+        "workerAttachmentTimeoutMs",
+        "sessionWallMs",
+        "gracefulStopMs",
+        "teardownMs",
+        "executionWallMs",
+        "commandCpuSeconds",
+        "addressSpaceBytes",
+        "uidProcesses",
+        "openFiles",
+        "fileBytes",
+        "stdoutBytes",
+        "stderrBytes",
+        "snapshotFiles",
+        "snapshotBytes",
+        "tmpBytes",
+        "scratchBytes"
+      ]
+    }
+  },
+  "attachment": {
+    "request": [
+      "v",
+      "kind",
+      "sessionId",
+      "workerId",
+      "attachmentToken"
+    ],
+    "success": [
+      "v",
+      "kind",
+      "sessionId",
+      "workerId"
+    ],
+    "requestKind": "attach",
+    "successKind": "attached"
+  },
+  "constants": {
+    "releaseMode": "control-v1",
+    "cleanupModes": [
+      "dispose-then-terminate",
+      "terminate-only"
+    ],
+    "operationStatuses": [
+      "pending",
+      "succeeded",
+      "failed"
+    ],
+    "phases": [
+      "open",
+      "authoring",
+      "preparing",
+      "prepared",
+      "authorized",
+      "reserved",
+      "starting",
+      "running",
+      "closing",
+      "closed",
+      "cleanupFailed"
+    ],
+    "cleanupStatuses": [
+      "notStarted",
+      "pending",
+      "succeeded",
+      "failed"
+    ],
+    "outcomeStatuses": [
+      "passed",
+      "mismatch",
+      "failed",
+      "cancelled",
+      "timedOut"
+    ],
+    "enforcedScopes": [
+      "connection",
+      "session",
+      "command",
+      "process",
+      "host-uid",
+      "host",
+      "none"
+    ],
+    "reasons": [
+      "normal",
+      "user-cancel",
+      "deadline",
+      "client-failure",
+      "worker-failure"
+    ],
+    "eventNames": [
+      "operation.finished",
+      "authoring.output",
+      "build.output",
+      "worker.started",
+      "worker.ready",
+      "worker.exited",
+      "worker.closing",
+      "session.closed"
+    ],
+    "additionalCapabilityIds": [
+      "limit.address-space-v1",
+      "limit.uid-processes-v1",
+      "quota.aggregate-v1"
+    ],
+    "errorCodes": [
+      "VERSION_UNSUPPORTED",
+      "CAPABILITY_UNAVAILABLE",
+      "ARGUMENT_INVALID",
+      "POLICY_DENIED",
+      "HANDLE_INVALID",
+      "STATE_INVALID",
+      "LIMIT_EXCEEDED",
+      "PREPARATION_FAILED",
+      "BUILD_FAILED",
+      "NEGOTIATION_ATTESTATION_INVALID",
+      "BACKEND_ADMISSION_FAILED",
+      "ATTACHMENT_FAILED",
+      "WORKER_PROTOCOL_FAILED",
+      "WORKER_EXITED",
+      "CANCELLED",
+      "DEADLINE_EXCEEDED",
+      "CLEANUP_FAILED",
+      "OPERATION_UNKNOWN"
+    ],
+    "errorStages": [
+      "bootstrap",
+      "policy",
+      "authoring",
+      "prepare",
+      "build",
+      "authorize",
+      "attach",
+      "worker",
+      "cleanup"
+    ],
+    "outputStreams": [
+      "stdout",
+      "stderr"
+    ]
+  },
+  "eventData": {
+    "operation.finished": [
+      "operationId",
+      "status",
+      "result?|error?"
+    ],
+    "authoring.output": [
+      "operationId",
+      "stream",
+      "chunk",
+      "bytesBase64"
+    ],
+    "build.output": [
+      "operationId",
+      "stream",
+      "chunk",
+      "bytesBase64"
+    ],
+    "worker.started": [
+      "workerId"
+    ],
+    "worker.ready": [
+      "workerId"
+    ],
+    "worker.exited": [
+      "workerId",
+      "reason",
+      "exitCode?"
+    ],
+    "worker.closing": [
+      "workerId",
+      "reason"
+    ],
+    "session.closed": [
+      "phase",
+      "cleanupStatus",
+      "remainingResources"
+    ]
+  },
+  "structuralLimits": {
+    "maxCapabilities": 64,
+    "maxRemainingResources": 64,
+    "maxUnixPathBytes": 107,
+    "opaqueStringBytes": 128,
+    "preparedRevision": 1
+  }
+}

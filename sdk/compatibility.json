@@ -1,0 +1,28 @@
+{
+  "schema": "mirrorgate.sdk-compatibility/v1",
+  "status": "experimental-development",
+  "sdkVersion": "0.1.0",
+  "controlVersions": [1],
+  "workerVersions": [1],
+  "backend": "linux-bubblewrap-v1",
+  "controller": {
+    "platform": "linux",
+    "python": "3.12",
+    "bubblewrapMinimum": "0.9.0",
+    "transports": ["owned-stdio", "attached-filesystem-unix"]
+  },
+  "nativeClients": ["node", "cpp"],
+  "workerRuntimes": ["node-v1", "rust-v1"],
+  "buildTools": {
+    "node": "24.15.0",
+    "rust": "1.96.0",
+    "cppStandard": 17,
+    "cmakeMinimum": "3.20",
+    "nlohmannJson": "3.11.3"
+  },
+  "capabilityNegotiationRequired": true,
+  "ownedProcessCloseReceipt": "checked-reap-v1",
+  "productionPublication": false,
+  "modelFacadeAcceptance": "experimental-local-shared-matrix-verified",
+  "modelFacadeEvidenceLedger": "https://github.com/NzSN/MirrorECMA/blob/main/docs/shared-orchestration-acceptance.md"
+}

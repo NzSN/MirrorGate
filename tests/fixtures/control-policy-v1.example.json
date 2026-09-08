@@ -1,0 +1,26 @@
+{
+  "schema": "mirrorgate.control-policy/v1",
+  "policies": [
+    {
+      "id": "test.node",
+      "roots": [{"id": "submission", "path": "/operator/public-submissions", "kinds": ["prebuilt", "source"], "allowedUids": [1000]}],
+      "buildPlans": [{"id": "copy", "command": ["/usr/bin/cp", "-a", "/source/.", "/output/"], "cwd": ".", "artifactPath": "."}],
+      "tools": [{"id": "python", "command": ["/usr/bin/python3"], "argumentMode": "append"}],
+      "runtimes": [
+        {
+          "id": "node-v1",
+          "kind": "node",
+          "runtimeMounts": [{"source": "/usr", "destination": "/usr"}, {"source": "/operator/node-24.15.0", "destination": "/runtime/node"}],
+          "command": ["/runtime/node/bin/node", "/runtime/mirrorgate-node-shim/runtimes/node/worker.mjs", "--manifest", "/runtime/mirrorgate-manifest/port.json", "--adapter", "/artifact/adapter.mjs"],
+          "artifactEntry": "adapter.mjs",
+          "descriptorSchema": "mirrors.model-interface-descriptor/v1",
+          "adapterId": "mirrorgate/node-v1",
+          "targetProfile": "node-v1",
+          "stateComputerContractVersion": "mirrors.state-computer/v1",
+          "nodeShim": {"root": "/operator/mirrorgate-public-node-shim-sources", "workerPath": "runtimes/node/worker.mjs", "protocolPath": "sdk/node/protocol.mjs"}
+        }
+      ],
+      "limits": {"sessionWallMs": 600000, "executionWallMs": 30000, "commandCpuSeconds": 20, "addressSpaceBytes": 4294967296, "uidProcesses": 4096, "openFiles": 128, "fileBytes": 67108864, "stdoutBytes": 4194304, "stderrBytes": 1048576, "snapshotFiles": 10000, "snapshotBytes": 536870912, "tmpBytes": 67108864, "scratchBytes": 268435456}
+    }
+  ]
+}

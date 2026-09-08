@@ -1,0 +1,25 @@
+{
+  "schema": "mirrorgate.control-policy/v1",
+  "policies": [
+    {
+      "id": "test.rust",
+      "roots": [{"id": "submission", "path": "/operator/public-submissions", "kinds": ["prebuilt"], "allowedUids": [1000]}],
+      "buildPlans": [],
+      "tools": [],
+      "runtimes": [
+        {
+          "id": "rust-v1",
+          "kind": "rust",
+          "runtimeMounts": [{"source": "/usr", "destination": "/usr"}],
+          "command": ["/artifact/worker", "--manifest", "/runtime/mirrorgate-manifest/port.json"],
+          "artifactEntry": "worker",
+          "descriptorSchema": "mirrors.model-interface-descriptor/v1",
+          "adapterId": "mirrorgate/rust-v1",
+          "targetProfile": "rust-v1",
+          "stateComputerContractVersion": "mirrors.state-computer/v1"
+        }
+      ],
+      "limits": {"sessionWallMs": 600000, "executionWallMs": 30000, "commandCpuSeconds": 20, "addressSpaceBytes": 4294967296, "uidProcesses": 4096, "openFiles": 128, "fileBytes": 67108864, "stdoutBytes": 4194304, "stderrBytes": 1048576, "snapshotFiles": 10000, "snapshotBytes": 536870912, "tmpBytes": 67108864, "scratchBytes": 268435456}
+    }
+  ]
+}

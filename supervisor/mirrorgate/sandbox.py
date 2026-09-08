@@ -14,8 +14,9 @@ import sys
 import tempfile
 import threading
 import time
+from typing import Hashable
 
-from .artifacts import _open_directory, freeze_tree, remove_snapshot
+from .artifacts import FrozenLease, _open_directory, freeze_tree, remove_snapshot
 from .policy import AdmissionError, Limits, ToolRequest, TrustedConfig
 
 
@@ -56,6 +57,18 @@ class SandboxProcess:
 
     def cancel(self) -> None:
         self._terminate("cancelled")
+
+    def terminate(self) -> None:
+        """Ask the namespace PID 1 to stop; the hard deadline remains external."""
+        with self._lock:
+            if self.returncode is not None:
+                return
+            if self.reason == "exited":
+                self.reason = "terminated"
+            try:
+                os.killpg(self.process.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
 
     def write(self, data: bytes) -> None:
         if not isinstance(data, bytes):
@@ -140,7 +153,9 @@ class SandboxProcess:
 
 class GateSession:
     """Trusted controller constructs this once; agent tools only call run/start."""
-    def __init__(self, config: TrustedConfig):
+    def __init__(self, config: TrustedConfig, *, _workspace_lease: FrozenLease | None = None,
+                 _lease_owner: Hashable | None = None,
+                 _readonly_leases: tuple[tuple[FrozenLease, Hashable, str], ...] = ()):
         self.config = config.checked()
         if sys.platform != "linux":
             raise AdmissionError("linux-bubblewrap-v1 requires Linux")
@@ -166,21 +181,43 @@ class GateSession:
         self.artifact = None
         self.output = None
         try:
-            if self.config.profile == "authoring":
+            if _workspace_lease is not None:
+                if self.config.profile == "authoring":
+                    raise AdmissionError("authoring cannot mount a frozen lease as writable")
+                # Duplicate the pinned descriptor.  The lease remains owned by
+                # the control backend and outlives this individual sandbox.
+                self.workspace = _workspace_lease._mount_path(_lease_owner)
+                self.workspace_fd = _workspace_lease.duplicate_fd(_lease_owner)
+                self._fds.append(self.workspace_fd)
+            elif self.config.profile == "authoring":
                 # Scan the initial source, rejecting pre-existing sockets/links.
                 inspected = freeze_tree(self.config.workspace, self._owned)
                 remove_snapshot(inspected.path)
                 self.workspace = Path(self.config.workspace)
+                self.workspace_fd = _open_directory(self.workspace)
+                self._fds.append(self.workspace_fd)
             else:
                 self.artifact = freeze_tree(self.config.workspace, self._owned)
                 self.workspace = self.artifact.path
-            self.workspace_fd = _open_directory(self.workspace)
-            self._fds.append(self.workspace_fd)
+                self.workspace_fd = _open_directory(self.workspace)
+                self._fds.append(self.workspace_fd)
             self.runtime_fds = []
             for mount in self.config.runtime_mounts:
                 fd = _open_directory(Path(mount.source))
                 self._fds.append(fd)
                 self.runtime_fds.append((fd, mount.destination))
+            self.readonly_lease_fds: list[tuple[int, str]] = []
+            for lease, owner, destination in _readonly_leases:
+                target = PurePosixPath(destination)
+                if (str(target) != destination or len(target.parts) != 3
+                        or target.parts[1] != "runtime"
+                        or not target.parts[2].startswith("mirrorgate-")):
+                    raise AdmissionError("internal frozen mounts require /runtime/mirrorgate-NAME")
+                if destination in {mount.destination for mount in self.config.runtime_mounts}:
+                    raise AdmissionError("internal frozen mount destination conflicts with runtime policy")
+                fd = lease.duplicate_fd(owner)
+                self._fds.append(fd)
+                self.readonly_lease_fds.append((fd, destination))
             if self.config.profile == "build":
                 self.output = Path(self.config.output) if self.config.output else self._owned / "output"
                 self.output.mkdir(mode=0o700, exist_ok=True)
@@ -202,6 +239,20 @@ class GateSession:
             self.close()
             raise
 
+    @classmethod
+    def from_frozen(cls, *, profile: str, lease: FrozenLease, owner: Hashable,
+                    runtime_mounts=(), limits: Limits | None = None,
+                    output: str | Path | None = None,
+                    readonly_leases: tuple[tuple[FrozenLease, Hashable, str], ...] = ()) -> "GateSession":
+        """Launch only from an owner-checked supervisor snapshot lease."""
+        if profile not in ("build", "execution"):
+            raise AdmissionError("frozen launches are build or execution only")
+        workspace = lease._mount_path(owner)
+        config = TrustedConfig(profile, workspace, output=output,
+                               runtime_mounts=tuple(runtime_mounts), limits=limits or Limits())
+        return cls(config, _workspace_lease=lease, _lease_owner=owner,
+                   _readonly_leases=readonly_leases)
+
     @property
     def mount_path(self) -> str:
         return {"authoring": "/workspace", "build": "/source", "execution": "/artifact"}[self.config.profile]
@@ -212,6 +263,8 @@ class GateSession:
         limits = self.config.limits
         argv = ["/usr/bin/bwrap", "--unshare-user", "--unshare-pid", "--unshare-ipc", "--unshare-net", "--unshare-uts", "--disable-userns", "--assert-userns-disabled", "--cap-drop", "ALL", "--clearenv", "--new-session", "--die-with-parent", "--as-pid-1", "--hostname", "mirrorgate"]
         for fd, destination in self.runtime_fds:
+            argv.extend(["--ro-bind", f"/proc/self/fd/{fd}", destination])
+        for fd, destination in self.readonly_lease_fds:
             argv.extend(["--ro-bind", f"/proc/self/fd/{fd}", destination])
         for source, destination in (("usr/bin", "/bin"), ("usr/sbin", "/sbin"), ("usr/lib", "/lib"), ("usr/lib64", "/lib64")):
             argv.extend(["--symlink", source, destination])
@@ -278,18 +331,19 @@ class GateSession:
         sender.join(timeout=1)
         return RunResult(code, handle.reason, bytes(stdout), bytes(stderr), time.monotonic() - handle.started)
 
-    def close(self) -> None:
+    def close(self, *, timeout: float = 5.0) -> None:
         with self._session_lock:
-            self._close()
+            self._close(timeout=timeout)
 
-    def _close(self) -> None:
+    def _close(self, *, timeout: float = 5.0) -> None:
         if self._closed:
             return
         self._closed = True
+        deadline = time.monotonic() + max(0, timeout)
         for handle in self._processes:
             if handle.returncode is None:
                 handle.cancel()
-            handle.wait(timeout=5)
+            handle.wait(timeout=max(0.001, deadline - time.monotonic()))
         for fd in self._fds:
             os.close(fd)
         self._fds.clear()

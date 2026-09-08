@@ -9,7 +9,11 @@ are limited to the configured backend and documented agent-host integration.
 | Document | Read when working on |
 | --- | --- |
 | [Architecture](architecture.md) | Repository responsibilities, trusted evaluation, shared infrastructure, and language shims |
-| [Orchestration control v1 — proposed](https://github.com/NzSN/MirrorGate/blob/main/docs/orchestration-control-v1.md) | Shared session workflow, control framing, owner-bound handles, managed worker transport, and cleanup completion for client-guide section 13 |
+| [Orchestration control v1](https://github.com/NzSN/MirrorGate/blob/main/docs/orchestration-control-v1.md) | Shared session workflow, control framing, owner-bound handles, managed worker transport, and cleanup completion for client-guide section 13 |
+| [Control policy v1](control-policy-v1.md) | Closed operator catalog for approved roots, build/tool commands, runtime launchers, attestation identities, and limit ceilings |
+| [Control usage](https://github.com/NzSN/MirrorGate/blob/main/docs/orchestration-control-usage.md) | Operator policy, owned/attached startup, preparation, authorization, native SDKs, and cleanup |
+| [Control policy catalog](https://github.com/NzSN/MirrorGate/blob/main/docs/control-policy-v1.md) | Approved roots, tools, build/runtime plans, immutable leases, and resource ceilings |
+| [Control implementation tasks](https://github.com/NzSN/MirrorGate/blob/main/docs/orchestration-control-v1-tasks.md) | Assigned implementation ownership, review cases, acceptance evidence, and follow-on model facades |
 | [Sandbox design walkthrough](https://github.com/NzSN/MirrorGate/blob/main/docs/sandbox-design.md) | How a tool request becomes an isolated command, source ownership, and agent-host obligations |
 | [Blind validation and isolation](blind-validation.md) | Information access during authoring, building, execution, and result disclosure |
 | [Worker protocol](worker-protocol.md) | The public port RPC, value semantics, lifecycle, and compatibility |

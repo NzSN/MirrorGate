@@ -29,14 +29,18 @@ jobs:
       - uses: dtolnay/rust-toolchain@d1031067263f94b142dd6c0ce24c5eb9d02d52a0
         with:
           toolchain: 1.96.0
-      - name: Install namespace backend
+      - name: Install namespace backend and C++ SDK prerequisites
         run: |
           sudo apt-get update
-          sudo apt-get install --no-install-recommends -y bubblewrap
+          sudo apt-get install --no-install-recommends -y bubblewrap cmake g++ nlohmann-json3-dev
           python3 --version
           bwrap --version
+      - name: Select the pinned public Node runtime tree
+        run: node --input-type=module -e 'import path from "node:path"; console.log(`MIRRORGATE_NODE_RUNTIME_ROOT=${path.dirname(path.dirname(process.execPath))}`)' >> "$GITHUB_ENV"
       - name: Fetch locked native dependencies
         run: cargo fetch --manifest-path runtimes/rust/Cargo.toml --locked
+      - name: Install the locked declaration-test compiler
+        run: npm ci --ignore-scripts
       - name: Protocol, language workers, and required real isolation
         run: bash scripts/test.sh
 
@@ -82,6 +86,8 @@ jobs:
           sudo apt-get install --no-install-recommends -y bubblewrap build-essential libssl-dev pkg-config
           cd MirrorECMA
           pnpm install --frozen-lockfile
+      - name: Select the pinned public Node runtime tree
+        run: node --input-type=module -e 'import path from "node:path"; console.log(`MIRRORGATE_NODE_RUNTIME_ROOT=${path.dirname(path.dirname(process.execPath))}`)' >> "$GITHUB_ENV"
       - uses: leanprover/lean-action@50fcf42d2e460296f1a34b402e990d1b24f8b596
         with:
           lake-package-directory: Mirrors

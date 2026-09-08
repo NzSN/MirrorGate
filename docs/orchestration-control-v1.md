@@ -1,7 +1,13 @@
 # Shared Orchestration Control v1 — Landing Design
 
-Status: **proposed implementation contract; not implemented or released**.
-Baseline: MirrorGate `a377341`, MirrorECMA `89fbd14`, and Mirrors `acc3d9d`.
+Status: **experimental Gate-side implementation; not released**.
+The controller, immutable preparation, managed transport, and Node/C++ SDKs are
+implemented. Local validation and ownership are recorded in the
+[implementation ledger](https://github.com/NzSN/MirrorGate/blob/main/docs/orchestration-control-v1-tasks.md);
+the [usage guide](https://github.com/NzSN/MirrorGate/blob/main/docs/orchestration-control-usage.md)
+describes the concrete entry points. Full MirrorECMA/MirrorCPP model-facade
+acceptance remains follow-on work.
+Design baseline: MirrorGate `a377341`, MirrorECMA `89fbd14`, and Mirrors `acc3d9d`.
 This design implements the shared-process obligations in
 [client guide §13](https://github.com/NzSN/Mirrors/blob/main/Docs/client-implementation-guide.md#13-shared-sandbox-orchestration-design-profile).
 The companion
@@ -455,8 +461,8 @@ mediation of every access-capable agent tool remain host obligations.
 
 ## 11. Implementation ownership and gates
 
-All paths below are planned additions or scoped changes, not existing shipped
-entry points:
+The following paths implement the experimental Gate-side profile. Production
+publication and companion model-facade acceptance remain separate gates:
 
 | Module | Responsibility |
 | --- | --- |
