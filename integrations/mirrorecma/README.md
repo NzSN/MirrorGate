@@ -1,5 +1,22 @@
 # Trusted MirrorECMA evaluator integration
 
+The accepted [implementation boundary](../../../MirrorECMA/docs/implementation-boundary-design.md)
+makes this optional integration the planned home for Gate-aware evaluation
+composition. MirrorECMA itself keeps generic MBT against caller-supplied
+implementations; the coordinating agent requests authoring directly from Gate.
+The integration will supply a deferred implementation factory/proxy using public
+APIs from both libraries and retain Gate ownership through admission and cleanup.
+Current helpers and smoke commands below are existing behavior, not evidence of
+completed facade extraction or a supported new integration package. See AH8 in
+the [hosting task ledger](../../docs/agent-hosting-tasks.md).
+
+The planned [reusable harness](../../../MirrorECMA/docs/mbt-harness-design.md)
+supports source tests, CLI, and an optional
+[evaluation-service wrapper](../../docs/evaluation-service-design.md) under this
+integration. Applications supply approved suite modules. Service access is a
+whole-evaluation interface, separate from public-port calls to the implementation;
+no service package/endpoint is implemented by the existing smoke wrapper below.
+
 This example retains MirrorECMA, generated bindings, full model files, trace
 files, and reports on the evaluator host. Only public shim code, a sanitized
 port manifest, and the submitted adapter/SUT are placed in the worker artifact.

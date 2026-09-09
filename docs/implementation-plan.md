@@ -78,6 +78,9 @@ The accepted [agent-hosting design](agent-hosting-design.md) makes the trusted
 agent host an optional MirrorGate module. Every item below is unimplemented;
 the external Counter experiment helpers are migration inputs only.
 
+The [agent-hosting task ledger](agent-hosting-tasks.md) assigns implementation to
+`specification_implementer` and records dependencies and acceptance evidence.
+
 - [ ] Specify the versioned control extension, operator agent profiles, supported
   runtime requirements, limits, ownership, and submission/cancellation ordering.
 - [ ] Promote generic launcher, broker, context/tool configuration, and cleanup
@@ -86,8 +89,15 @@ the external Counter experiment helpers are migration inputs only.
   cleanup, preserving existing preparation and worker admission ordering.
 - [ ] Expose the same lifecycle through native clients without client-owned
   launchers or a manually started separate agent-host daemon.
-- [ ] Migrate the MirrorECMA experiment to that interface, retaining task/public
-  context approval and private evaluation in its trusted caller.
+- [ ] Keep MirrorECMA's MBT interface implementation-neutral; extract current
+  Gate-aware evaluation composition into an external integration with an
+  explicit consumer-migration plan. No managed-agent author option is added.
+- [ ] Ship the standard outside-agent hosting-tool adapter with configuration,
+  public task bindings, caller-scoped run references, and actual dispatch tests;
+  applications register/configure it without writing a custom hosting wrapper.
+- [ ] Migrate the experiment so the coordinator requests hosting from Gate
+  directly and the external integration supplies an implementation proxy to
+  generic MirrorECMA MBT, retaining private evaluation and disclosure control.
 - [ ] Verify actual tool denial, context isolation, credential custody, foreign
   handles, sealing races, failure cleanup, and fresh private evaluation through
   the public interface with two native clients.
@@ -95,6 +105,21 @@ the external Counter experiment helpers are migration inputs only.
 Done: the hosting acceptance matrix passes on the declared agent/runtime/backend
 versions, existing gates remain green, and compatibility records the evidence.
 Resume, follow-up messaging, delegation, and automatic retries remain future work.
+
+## M7 — Reusable harness and optional evaluation service (planned)
+
+- [ ] Extract a reusable trusted MBT suite with source-test and CLI entry points
+  as part of AH8, preserving deferred implementation factories and generic MBT.
+- [ ] Specify AH12's versioned evaluation-service contract, approved suite and
+  implementation references, caller/run identity, bounds, retention, and cleanup.
+- [ ] Implement the optional service/proxy in the external integration and verify
+  the same fixed-input outcomes as local suite calls, including negative paths.
+- [ ] Keep private suite identity and mounts independent of submitted source;
+  keep service/model/control/worker channels and their handles distinct.
+
+Done: AH12's service acceptance passes with recorded versions and commands.
+Source-code tests and base hosting remain usable without the service. This
+milestone does not advertise remote Gate control or change MirrorECMA semantics.
 
 ## Work assignment boundaries
 

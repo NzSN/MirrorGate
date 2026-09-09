@@ -17,6 +17,19 @@ and does not start an AI implementer. The [agent-hosting design](agent-hosting-d
 assigns that future responsibility to MirrorGate through a versioned control
 extension. No agent-launch or resume command is available in control v1.
 
+That planned extension also backs a MirrorGate-supplied
+[hosting-tool adapter](agent-hosting-design.md#standard-hosting-tool-adapter)
+for outside agents. Applications will configure/register the adapter; it will
+retain the owning connection across tool calls and expose only approved task
+and run operations. The adapter is not an existing control-v1/MCP entry point.
+
+In the primary planned workflow, the coordinator supplies the approved brief
+directly to Gate's hosting tool/SDK. A separate trusted evaluation integration
+retains the Gate owner connection and supplies a generic implementation proxy
+to MirrorECMA, which does not start/attach Gate in the revised target. The existing
+Mirrors server uses a separate model transport. See the
+[implementation boundary](../../MirrorECMA/docs/implementation-boundary-design.md).
+
 Run the approved installation as an owned stdio process:
 
 ```bash

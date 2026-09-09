@@ -26,6 +26,17 @@ The [sandbox design walkthrough](https://github.com/NzSN/MirrorGate/blob/main/do
 through trusted configuration, Bubblewrap isolation, monitoring, and cleanup,
 and explains what the implementation agent's host must enforce.
 
+The accepted [agent-hosting design](docs/agent-hosting-design.md) assigns future
+implementer launch, configuration, restricted tools, and cleanup to MirrorGate.
+The user-started coordinator requests implementation directly from Gate through
+its standard hosting tool or native SDK. MirrorECMA retains generic MBT against
+implementations; a separate trusted integration supplies a Gate-backed proxy.
+Agent prompts, launch, builds, and Gate lifecycle stay outside MirrorECMA's target
+core. The existing coupled facade still awaits an explicit migration.
+Its [implementation tasks](docs/agent-hosting-tasks.md) record assignments,
+dependencies, and acceptance requirements. Managed agent hosting is planned;
+current agent launch/configuration remains in external hosts and experiment helpers.
+
 The experimental [orchestration control v1 contract](https://github.com/NzSN/MirrorGate/blob/main/docs/orchestration-control-v1.md)
 defines the shared process needed by Mirrors client-guide section 13. The
 [operator policy catalog](docs/control-policy-v1.md) fixes approved roots,
@@ -38,6 +49,11 @@ Node/C++ SDKs. Its
 separates the control implementation, async replay prerequisites, native
 model facade, and cross-language acceptance. The model facades are follow-on
 work; production package publication remains disabled.
+
+The planned [evaluation service](docs/evaluation-service-design.md) lets an agent,
+CI job, or application invoke the same trusted MBT harness used by source-code
+tests. Its service proxy requests evaluations; the implementation proxy invokes
+the SUT. Both stay outside MirrorECMA's core, and neither extends control v1.
 
 ## Architecture
 

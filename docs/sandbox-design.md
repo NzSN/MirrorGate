@@ -145,6 +145,22 @@ its deadline. Streaming execution-channel EOF can instead trigger a short grace
 period followed by forced cleanup. Worker protocol cancellation is a separate
 layer above this process supervision; see [protocol v1](https://github.com/NzSN/MirrorGate/blob/main/docs/protocol-v1.md).
 
+## Why build and runtime use restricted profiles
+
+Development-tool isolation ends with the command it confines. A submission's
+build script or compiler plugin can execute again during preparation; the SUT
+and adapter execute during replay, including at import/initialization. Running
+either stage on the evaluator host would reopen private file/environment access.
+Gate therefore applies separate build and execution profiles around those runs.
+The trusted evaluation integration retains the generated binding/proxy and
+private model and supplies an implementation to generic MirrorECMA MBT; it does
+not import the submitted adapter or put Gate lifecycle into MirrorECMA. See the
+[three-stage access table](blind-validation.md#three-environments).
+
+Profiles can be temporary environments on the same host. They do not require
+three permanent machines, and no-compilation submissions may use minimal
+preparation while retaining snapshot identity and restricted execution.
+
 ## Handoff from authoring to evaluation
 
 Authoring scans its initial tree for unsupported files and retains the live

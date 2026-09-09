@@ -9,6 +9,17 @@ profile, launch operation, or agent-runtime version matrix yet. The external
 MirrorECMA Counter experiment is migration evidence, not Gate compatibility
 certification. Hosting needs an explicit versioned control extension and actual
 runtime capability/lifecycle acceptance before being advertised as supported.
+The revised target also extracts the existing Gate-aware MirrorECMA facade
+into an external integration; no runtime decoupling or export removal is yet
+implemented. MirrorECMA will not gain the superseded managed-author option.
+The standard outside-agent hosting-tool adapter is likewise planned. Its first
+intended transport is stdio MCP over a public native SDK; tool schemas, package
+entry points, and tested framework/transport compatibility are not yet frozen.
+
+The optional [evaluation service](evaluation-service-design.md) is a separate
+planned profile. Its transport, version, public operations and run references
+are not part of frozen Gate control/worker contracts, and have no acceptance
+evidence yet. Source-test harness reuse does not imply service support.
 
 | Layer | Initial identity / requirement | Verification scope |
 | --- | --- | --- |

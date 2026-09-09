@@ -34,6 +34,22 @@ The evaluator must control the complete oracle and its run configuration.
 
 ## Three environments
 
+The primary workflow uses a user-started coordinating agent that supplies the
+public brief directly to Gate. Gate starts the separate restricted implementer;
+an external integration later supplies its implementation proxy to MirrorECMA. Isolation must continue when submitted code executes
+after authoring; an agent's tool restrictions do not confine later host-side
+build scripts or imports of its adapter.
+
+| Stage | Executed code | Permitted working data |
+| --- | --- | --- |
+| Authoring | Agent development commands | Public requirements/tools and writable source |
+| Build | Submission build scripts, dependency hooks, compiler plugins | Frozen source, approved dependencies/toolchain, writable output |
+| Execution | SUT/adapter initialization and runtime operations | Frozen artifact, public port inputs, writable SUT state |
+
+These are permission profiles and temporary process environments, not three
+permanent machines. A submission needing no compilation can use minimal
+preparation while retaining frozen artifacts and restricted runtime loading.
+
 ### Authoring
 
 Give the implementation agent only the public interface, requirements, SUT, and
@@ -62,12 +78,18 @@ or configured their controller.
 Treat submission build hooks, dependency installation scripts, compiler plugins,
 and adapter initialization code as submission-controlled execution. Build them
 in an environment without evaluator credentials or private specifications.
-Record the resulting artifact and dependency identities. Avoid importing the
-submission into the trusted evaluator just to discover its interface.
+Record the resulting artifact and dependency identities. A build hook can read
+private host files if it runs with evaluator privileges, even when authoring
+was restricted. Avoid importing the submission into the trusted evaluator just
+to discover its interface.
 
 ### Execution
 
 Launch the adapter and SUT in a restricted worker after evaluation admission.
+Importing the adapter into the trusted MBT process could execute its initialization
+with access to the oracle. Keep only the trusted generated binding and public-port
+proxy in that process; the worker runs the submitted implementation and returns
+actual observations.
 Expose the approved submission/runtime, public interface artifacts, a private
 writable SUT area, and the port channel. Private evaluator files and memory,
 credentials, container-management sockets, and unrestricted host/process access
@@ -105,6 +127,21 @@ Public development tests may return rich diagnostics. A private evaluation
 needs a deliberate result-disclosure policy: repeatedly returning expected
 states and counterexamples exposes the hidden oracle. Detailed MirrorECMA
 reports should remain on the trusted side until disclosure is intended.
+
+## Source-code suites and service access
+
+MBT test modules may be versioned beside implementation source. The evaluator
+must still select an approved immutable suite revision independently of the
+submission. Keep private models/tests out of authoring/build/worker mounts,
+and never import a submission-controlled test replacement with evaluator
+privileges. Public author-written tests are development evidence, not the
+authoritative private evaluation suite.
+
+A service may expose start/query/cancel for that suite while retaining its code
+and private data on the evaluator. Service results obey the same disclosure
+policy as local evaluation. An implementation reference is not a raw Gate
+session handle, and access to a service run must not grant access to other
+callers' runs. See [evaluation-service design](evaluation-service-design.md).
 
 ## Observation fidelity is a separate requirement
 
