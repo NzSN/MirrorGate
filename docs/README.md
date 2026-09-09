@@ -6,9 +6,14 @@ The Linux/Bubblewrap supervisor, Node/Rust workers, protocol, conformance suite,
 and optional evaluator integration are implemented and locally tested. Guarantees
 are limited to the configured backend and documented agent-host integration.
 
+The 2026-09-09 ownership decision moves trusted agent hosting into MirrorGate as
+an optional module. Agent launch/configuration still lives in external hosts
+and experiment helpers; the managed hosting interface and lifecycle are planned.
+
 | Document | Read when working on |
 | --- | --- |
 | [Architecture](architecture.md) | Repository responsibilities, trusted evaluation, shared infrastructure, and language shims |
+| [Agent hosting design](agent-hosting-design.md) | Planned Gate-owned implementer launch, public context delivery, restricted tools, submission, cleanup, and runtime acceptance |
 | [Orchestration control v1](https://github.com/NzSN/MirrorGate/blob/main/docs/orchestration-control-v1.md) | Shared session workflow, control framing, owner-bound handles, managed worker transport, and cleanup completion for client-guide section 13 |
 | [Control policy v1](control-policy-v1.md) | Closed operator catalog for approved roots, build/tool commands, runtime launchers, attestation identities, and limit ceilings |
 | [Control usage](https://github.com/NzSN/MirrorGate/blob/main/docs/orchestration-control-usage.md) | Operator policy, owned/attached startup, preparation, authorization, native SDKs, and cleanup |
@@ -37,6 +42,9 @@ The central decisions are:
 - Keep MirrorGate independent of MirrorECMA internals. MirrorECMA is the first
   proposed evaluator integration, not a required implementation language.
 - Treat isolation and observation fidelity as separate requirements.
+- Own reusable agent hosting in MirrorGate, with runtime configuration behind
+  shared control; retain task/public-context approval and private evaluation
+  with the trusted caller. This ownership change is not implemented.
 
 The first profile selects Python3.12, Linux/Bubblewrap, Node24.15.0, Rust1.96.0,
 and the concrete v1 protocol. Additional backends/languages, aggregate cgroup

@@ -3,6 +3,13 @@
 Status: initial locally verified profile; no published release or hosted CI run
 is claimed by this document.
 
+[Managed agent hosting](agent-hosting-design.md) is planned, with Codex as the
+first intended runtime integration. There is no supported Gate agent-hosting
+profile, launch operation, or agent-runtime version matrix yet. The external
+MirrorECMA Counter experiment is migration evidence, not Gate compatibility
+certification. Hosting needs an explicit versioned control extension and actual
+runtime capability/lifecycle acceptance before being advertised as supported.
+
 | Layer | Initial identity / requirement | Verification scope |
 | --- | --- | --- |
 | Worker protocol | `v: 1` JSONL | Shared strict-frame/value corpus and lifecycle tests |

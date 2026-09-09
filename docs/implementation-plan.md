@@ -72,6 +72,30 @@ reject faulty implementations, and pass the defined oracle-access denial tests.
 Done: a clean checkout reproduces the supported matrix and the release states
 exactly which profiles and isolation guarantees were exercised.
 
+## M6 — Managed agent hosting (planned)
+
+The accepted [agent-hosting design](agent-hosting-design.md) makes the trusted
+agent host an optional MirrorGate module. Every item below is unimplemented;
+the external Counter experiment helpers are migration inputs only.
+
+- [ ] Specify the versioned control extension, operator agent profiles, supported
+  runtime requirements, limits, ownership, and submission/cancellation ordering.
+- [ ] Promote generic launcher, broker, context/tool configuration, and cleanup
+  into Gate; implement the first supported Codex runtime integration.
+- [ ] Own fresh agent runs through submission, source sealing, and bounded
+  cleanup, preserving existing preparation and worker admission ordering.
+- [ ] Expose the same lifecycle through native clients without client-owned
+  launchers or a manually started separate agent-host daemon.
+- [ ] Migrate the MirrorECMA experiment to that interface, retaining task/public
+  context approval and private evaluation in its trusted caller.
+- [ ] Verify actual tool denial, context isolation, credential custody, foreign
+  handles, sealing races, failure cleanup, and fresh private evaluation through
+  the public interface with two native clients.
+
+Done: the hosting acceptance matrix passes on the declared agent/runtime/backend
+versions, existing gates remain green, and compatibility records the evidence.
+Resume, follow-up messaging, delegation, and automatic retries remain future work.
+
 ## Work assignment boundaries
 
 After M0, separate ownership can cover the supervisor/backend, protocol and

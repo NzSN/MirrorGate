@@ -41,6 +41,13 @@ The shared control implementation belongs in MirrorGate. A Node SDK and C++
 SDK interpret the same control contract and fixtures. Neither SDK contains a
 second copy of the session transition function.
 
+The accepted [agent-hosting design](agent-hosting-design.md) plans a Gate-owned
+agent host accessed through shared control by native clients. Current control
+v1 offers authoring commands but no agent-launch, prompt-delivery, or resume
+operation. Hosting requires a separately specified versioned control extension,
+operator policy, capability negotiation, and shared fixtures before implementation.
+This document adds no operations to the frozen v1 schema or worker protocol.
+
 ## 2. Three separate channels
 
 | Channel | Participants | Content | Bound excluding LF |

@@ -5,6 +5,10 @@ Status: reference architecture with an initial Linux implementation. The
 implemented restrictions and limitations; broader platform guarantees remain
 requirements rather than verified claims.
 
+The accepted [agent-hosting design](agent-hosting-design.md) extends MirrorGate
+ownership to the trusted agent host. That module is planned: current agent
+launch/configuration still lives in external hosts and experiment helpers.
+
 MirrorGate is intended to manage access boundaries throughout authoring,
 building, and evaluating an application's adapter and system under test (SUT).
 It keeps the implementer's tools and submitted code separate from the private
@@ -15,10 +19,10 @@ validation oracle, while providing a shared interface for isolated execution.
 | Owner | Responsibilities |
 | --- | --- |
 | Mirrors | Resolve model interfaces, emit bindings, invoke Apalache, and compare reported observations with model states |
-| Trusted evaluator | Own private specifications, validation configuration, selected scenarios, expected results, and disclosure policy |
-| MirrorGate | Manage authoring, build, and execution sandbox profiles; mediate approved tool execution; define worker RPC; own sandbox lifecycle, runtime shims, and conformance tests |
+| Trusted evaluator/caller | Own private specifications, validation configuration, selected scenarios, expected results, task selection, and approval of public context and feedback |
+| MirrorGate | Manage authoring, build, and execution sandboxes, tools, worker RPC, runtime shims, and conformance; planned agent host owns implementer launch, configuration, context delivery, and cleanup |
 | Isolation backend | Enforce the configured filesystem, process, privilege, network, and resource restrictions through OS, container, or VM mechanisms |
-| Trusted agent host | Route access-capable agent tools through MirrorGate; expose only approved capabilities and public context to the implementation agent |
+| Trusted agent host (planned MirrorGate module; currently external) | Launch/configure the implementer, route access-capable tools through MirrorGate, deliver approved public context, and manage agent lifecycle |
 | Application implementer | Write the actual SUT and adapter through the public authoring environment, then submit a fixed artifact for evaluation |
 
 The complete specification may contain public interface information as well as
@@ -47,7 +51,8 @@ host an authoring agent that can change the submission between private cases.
 An authoring agent may have broad development capabilities within its own
 profile without gaining access to the evaluation environment.
 
-The trusted agent host must route the coding agent's filesystem operations,
+The trusted agent host, owned by MirrorGate in the target design, must route
+the coding agent's filesystem operations,
 shell commands, search, builds, and other resource-access tools through
 MirrorGate-managed execution or an explicitly approved restricted integration.
 The agent must not retain an unrestricted host tool or connector that can read
@@ -57,7 +62,8 @@ directory or repository does not close it.
 
 Private specifications, credentials, expected states, and hidden diagnostics
 must also be excluded from the agent's prompts, retrieved context, and tool
-responses. The evaluator and agent host own this disclosure control. A sandbox
+responses. The evaluator approves disclosure; the agent host enforces delivery
+and capability restrictions. A sandbox
 cannot conceal information already supplied through an allowed channel.
 
 MirrorGate accepts policy from trusted configuration. Submitted artifacts and
@@ -76,6 +82,9 @@ flowchart TB
         Spec["Private specification"] --> Mirrors["Mirrors + Apalache"]
         Mirrors <-->|"Model protocol"| Evaluator["Evaluator + generated binding"]
         Evaluator --> Supervisor["MirrorGate supervisor + tool gateway"]
+        Evaluator -->|"Approved task and public context"| Host["MirrorGate agent host: planned"]
+        Host -->|"Launch, configure, manage"| Agent
+        Host -->|"Bind approved tools to session"| Supervisor
         Supervisor --> Backend["OS / container / VM backend"]
     end
     subgraph Authoring["Restricted authoring environment"]
@@ -102,6 +111,13 @@ The coding model or agent controller may be hosted elsewhere; the authoring
 profile governs its accessible resources and tool execution, not the physical
 location of model inference. Its host exposes the managed tool gateway without
 an independent path to evaluator resources.
+
+The agent-host node shows planned ownership, not an implemented launcher.
+Its trusted process and model credentials remain outside the writable authoring
+environment. Native clients will request hosting through shared Gate control
+without implementing their own launchers. External hosts and human authoring
+remain optional integrations with their own tool/context obligations. See the
+[hosting lifecycle](agent-hosting-design.md#lifecycle-and-failure-rules).
 
 Solid arrows show information or control handoffs; dashed arrows show backend
 enforcement. The supervisor creates, limits, terminates, and cleans up the

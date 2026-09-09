@@ -11,6 +11,12 @@ MirrorCPP orchestration facades remain separate follow-on work.
 
 ## Start the shared process
 
+This guide covers the implemented controller. Agent launch/configuration is
+currently supplied by external hosts; `authoring.exec` runs restricted commands
+and does not start an AI implementer. The [agent-hosting design](agent-hosting-design.md)
+assigns that future responsibility to MirrorGate through a versioned control
+extension. No agent-launch or resume command is available in control v1.
+
 Run the approved installation as an owned stdio process:
 
 ```bash

@@ -8,6 +8,11 @@ explains the implemented `linux-bubblewrap-v1` backend. The
 exact limits, and operational caveats; the [architecture](https://github.com/NzSN/MirrorGate/blob/main/docs/architecture.md)
 defines ownership across MirrorGate, the evaluator, and the agent host.
 
+The [agent-hosting design](agent-hosting-design.md) assigns the trusted host to
+MirrorGate as a planned optional module. The command gateway described here
+does not launch/configure an AI agent; it currently requires an external host.
+The proposed module will reuse this sandbox enforcement.
+
 ## From an agent request to a restricted command
 
 ```mermaid
@@ -158,6 +163,10 @@ submission; the copy checks do not implement an atomic transaction across a live
 source tree. Artifact identity also does not establish that submitted code is honest.
 
 ## What the agent host must provide
+
+These obligations apply to current external hosts and the planned MirrorGate
+host module. Moving ownership does not relax them or automatically restrict an
+already-running agent.
 
 The gateway can restrict access to private specifications only when every
 access-capable agent tool goes through it or an explicitly approved restricted
