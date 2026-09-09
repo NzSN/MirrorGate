@@ -1,0 +1,52 @@
+{
+  "name": "mirrorgate-mirrorecma",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Optional MirrorGate-owned integration for generic MirrorECMA MBT",
+  "files": [
+    "dist",
+    "README.md",
+    "VALIDATION.md",
+    "service",
+    "WORKFLOW.md",
+    "examples/counter"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./legacy": {
+      "types": "./dist/legacy.d.ts",
+      "import": "./dist/legacy.js"
+    },
+    "./service": {
+      "types": "./service/index.d.mts",
+      "import": "./service/index.mjs"
+    },
+    "./service/proxy": {
+      "types": "./service/proxy.d.mts",
+      "import": "./service/proxy.mjs"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "test": "NODE_OPTIONS=--experimental-vm-modules jest --runInBand",
+    "test:packed": "node scripts/packed-consumer.mjs",
+    "test:sandbox": "node scripts/packed-consumer.mjs --sandbox",
+    "test:workflow": "node scripts/installed-workflow.mjs"
+  },
+  "peerDependencies": {
+    "mirrorgate": "0.1.0",
+    "mirrorecma": "^1.0.0 || ^2.0.0"
+  },
+  "devDependencies": {
+    "typescript": "6.0.3",
+    "@types/node": "^22.19.19",
+    "@types/jest": "^30.0.0",
+    "jest": "^30.4.2",
+    "ts-jest": "^29.4.11"
+  }
+}

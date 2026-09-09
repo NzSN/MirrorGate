@@ -17,12 +17,12 @@ export type ControlErrorCode =
   | 'PREPARATION_FAILED' | 'BUILD_FAILED' | 'NEGOTIATION_ATTESTATION_INVALID'
   | 'BACKEND_ADMISSION_FAILED' | 'ATTACHMENT_FAILED' | 'WORKER_PROTOCOL_FAILED'
   | 'WORKER_EXITED' | 'CANCELLED' | 'DEADLINE_EXCEEDED' | 'CLEANUP_FAILED'
-  | 'OPERATION_UNKNOWN';
+  | 'OPERATION_UNKNOWN' | 'AGENT_START_FAILED' | 'AGENT_EXITED' | 'AUDIT_UNAVAILABLE';
 
-export type ControlErrorStage = 'bootstrap' | 'policy' | 'authoring' | 'prepare' | 'build' | 'authorize' | 'attach' | 'worker' | 'cleanup';
+export type ControlErrorStage = 'bootstrap' | 'policy' | 'authoring' | 'prepare' | 'build' | 'authorize' | 'attach' | 'worker' | 'cleanup' | 'hosting';
 export type CleanupReason = 'normal' | 'user-cancel' | 'deadline' | 'client-failure' | 'worker-failure';
 export type CleanupMode = 'dispose-then-terminate' | 'terminate-only';
-export type SessionPhase = 'open' | 'authoring' | 'preparing' | 'prepared' | 'authorized' | 'reserved' | 'starting' | 'running' | 'closing' | 'closed' | 'cleanupFailed';
+export type SessionPhase = 'open' | 'authoring' | 'submitted' | 'preparing' | 'prepared' | 'authorized' | 'reserved' | 'starting' | 'running' | 'closing' | 'closed' | 'cleanupFailed';
 export type CleanupStatus = 'notStarted' | 'pending' | 'succeeded' | 'failed';
 
 export class ControlProtocolError extends Error {
@@ -61,7 +61,7 @@ export interface HelloLimits {
 }
 
 export interface ControlHello {
-  controlVersion: 1;
+  controlVersion: 1 | 2;
   instanceId: string;
   capabilities: Capability[];
   limits: HelloLimits;
@@ -140,6 +140,34 @@ export type OperationOutcome<T> =
 export interface ControlRequestOptions {signal?: AbortSignal; timeoutMs?: number}
 export interface ControlWaitOptions {signal?: AbortSignal; timeoutMs?: number}
 
+export interface PublicTask {readonly instructions: string; readonly files: readonly {readonly path: string; readonly text: string}[]}
+export interface HostingLimits {
+  wallMs: number; stdoutBytes: number; stderrBytes: number;
+  progressRecords: number; progressBytes: number; progressRecordBytes: number;
+}
+export interface HostedRun {
+  runId: string;
+  phase: 'starting' | 'running' | 'submitting' | 'cleaning' | 'finished';
+  cleanup: {status: CleanupStatus; remainingResources: string[]};
+  limits: HostingLimits;
+  progress: {firstSeq: number; nextSeq: number; truncated: boolean; records: {seq: number; message: string}[]};
+  outcome?: 'submitted' | 'failed' | 'cancelled' | 'timedOut';
+  submission?: {submissionId: string; sourceHash: string; sourceRevision: 1};
+  error?: {code: ControlErrorCode; stage: ControlErrorStage; message: string; operationId?: number};
+}
+export interface StartAgentOptions {profileId: string; publicTask: PublicTask; limits?: Partial<HostingLimits>}
+export class HostedAgentRun {
+  private constructor();
+  readonly session: ControlSession;
+  readonly id: string;
+  readonly latest: Readonly<HostedRun> | null;
+  status(options?: ControlRequestOptions): Promise<Readonly<HostedRun>>;
+  /** Joins bounded hosting cleanup; acknowledgement timeout is at least 7 seconds. */
+  cancel(reason?: CleanupReason, options?: ControlRequestOptions): Promise<Readonly<HostedRun>>;
+  /** Stops waiting on cancellation; use cancel() to cancel the hosted run. */
+  wait(options?: ControlWaitOptions & {pollMs?: number}): Promise<Readonly<HostedRun>>;
+}
+
 export class OperationHandle<T> {
   private constructor();
   readonly session: ControlSession;
@@ -174,12 +202,13 @@ export class WorkerReservation {
 }
 
 export type ControlEvent =
-  | {v: 1; kind: 'event'; seq: number; sessionId: string; event: 'operation.finished'; data: OperationOutcome<unknown>}
-  | {v: 1; kind: 'event'; seq: number; sessionId: string; event: 'authoring.output' | 'build.output'; data: {operationId: number; stream: 'stdout' | 'stderr'; chunk: number; bytesBase64: string}}
-  | {v: 1; kind: 'event'; seq: number; sessionId: string; event: 'worker.started' | 'worker.ready'; data: {workerId: string}}
-  | {v: 1; kind: 'event'; seq: number; sessionId: string; event: 'worker.exited'; data: {workerId: string; reason: CleanupReason; exitCode?: number}}
-  | {v: 1; kind: 'event'; seq: number; sessionId: string; event: 'worker.closing'; data: {workerId: string; reason: CleanupReason}}
-  | {v: 1; kind: 'event'; seq: number; sessionId: string; event: 'session.closed'; data: CleanupResult};
+  | {v: 1 | 2; kind: 'event'; seq: number; sessionId: string; event: 'operation.finished'; data: OperationOutcome<unknown>}
+  | {v: 1 | 2; kind: 'event'; seq: number; sessionId: string; event: 'authoring.output' | 'build.output'; data: {operationId: number; stream: 'stdout' | 'stderr'; chunk: number; bytesBase64: string}}
+  | {v: 1 | 2; kind: 'event'; seq: number; sessionId: string; event: 'worker.started' | 'worker.ready'; data: {workerId: string}}
+  | {v: 1 | 2; kind: 'event'; seq: number; sessionId: string; event: 'worker.exited'; data: {workerId: string; reason: CleanupReason; exitCode?: number}}
+  | {v: 1 | 2; kind: 'event'; seq: number; sessionId: string; event: 'worker.closing'; data: {workerId: string; reason: CleanupReason}}
+  | {v: 1 | 2; kind: 'event'; seq: number; sessionId: string; event: 'session.closed'; data: CleanupResult}
+  | {v: 2; kind: 'event'; seq: number; sessionId: string; event: 'agent.updated' | 'agent.finished'; data: {run: HostedRun}};
 
 export class ControlSession {
   private constructor();
@@ -188,6 +217,9 @@ export class ControlSession {
   readonly runtime: string;
   readonly manifestJson: string;
   readonly manifest: PublicManifest;
+  startAgent(request: StartAgentOptions, options?: ControlRequestOptions): Promise<HostedAgentRun>;
+  /** Inspect an accepted run even if its start reply was lost above the SDK. */
+  agentStatus(options?: ControlRequestOptions): Promise<Readonly<HostedRun> | null>;
   authoringExec(request: {toolId: string; arguments: string[]; cwd?: string}, options?: ControlRequestOptions): Promise<OperationHandle<CommandResult>>;
   prepare(options?: ControlRequestOptions): Promise<OperationHandle<Prepared>>;
   authorize(request: {preparedRevision: number; challenge: string; attestation: RequiredMatchAttestation}, options?: ControlRequestOptions): Promise<AuthorizationHandle>;
@@ -200,6 +232,8 @@ export class ControlSession {
 }
 
 export interface ControlClientOptions {
+  /** Defaults to v1. V2 requires hosting.fresh-agent-v1 and never downgrades. */
+  controlVersion?: 1 | 2;
   requiredCapabilities?: string[];
   helloTimeoutMs?: number;
   requestTimeoutMs?: number;

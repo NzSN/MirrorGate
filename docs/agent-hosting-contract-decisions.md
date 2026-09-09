@@ -1,13 +1,14 @@
 # Managed hosting contract decisions — AH1.1 draft
 
-Status: reviewable decision draft, 2026-09-09. This is the bounded AH1.1 design
-output, not the frozen AH1 contract, machine-readable fixtures, or implemented
-support. The names and bounds below are proposed choices to carry into AH1.2.
-Do not implement them by extending the frozen control v1 records.
+Status: historical AH1.1 decision draft, retained from 2026-09-09. AH1.2 and the
+implementation are complete; the [control v2 contract](agent-hosting-control-v2.md),
+versioned schemas/fixtures, and [final validation](managed-workflow-validation.md)
+are authoritative for current APIs and support. Proposed names, remaining work,
+and future-tense statements below record the earlier decision stage, not current gaps.
 
 Read alongside [hosting design](agent-hosting-design.md),
 [task ledger](agent-hosting-tasks.md), [control v1](orchestration-control-v1.md),
-and [MirrorECMA ownership](../../MirrorECMA/docs/implementation-boundary-design.md).
+and [MirrorECMA ownership](https://github.com/NzSN/MirrorECMA/blob/main/docs/implementation-boundary-design.md).
 The coordinator calls Gate directly; MirrorECMA receives a generic implementation
 factory/binding. Mirrors and worker port v1 remain unchanged.
 
@@ -113,6 +114,12 @@ Today `prepare` rejects `sealed`, while `_stop_authoring` sets it. Calling those
 unchanged after submit cannot implement the new contract.
 [artifacts.py](../supervisor/mirrorgate/artifacts.py) remains the snapshot/lease
 owner; the broker must not invent another snapshot algorithm.
+
+The [R1–R3 ownership clarification](managed-workflow-design.md) requires the
+trusted host/evaluation composition below to be supplied and supported by
+MirrorGate. "Separate integration" means separate from MirrorECMA's core;
+its lifecycle, aggregate receipts and private/public result projection remain
+Gate responsibilities. Applications supply approved inputs and suite callbacks.
 
 ## 4. One owner through tool calls and evaluation
 
@@ -273,7 +280,7 @@ vectors; this prose list is not machine-readable acceptance evidence.
   correct/faulty real replay, and installed Node/C++ consumers remain required
   implementation acceptance. Deterministic race fixtures cannot replace them.
 
-## 8. Remaining AH1 work and validation of this draft
+## 8. Historical AH1 handoff and validation of this draft
 
 These are concrete proposed decisions; no parent or user approval of a frozen
 contract is implied. AH1.2 still owns complete closed record/error/event schemas,

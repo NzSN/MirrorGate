@@ -1,0 +1,159 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mirrorgate.dev/control-v2/audit-receipt-schema.json",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "mirrorgate.agent-audit/v1"
+    },
+    "probeRevision": {
+      "const": "mirrorgate.codex-dispatch/v1"
+    },
+    "identity": {
+      "type": "object",
+      "properties": {
+        "adapterRevision": {
+          "const": "mirrorgate.codex-host/v1"
+        },
+        "executableSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "version": {
+          "const": "codex-cli 0.153.4"
+        },
+        "model": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,127}$"
+        },
+        "catalogSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "templateSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "support": {
+          "type": "object",
+          "properties": {
+            "agent_runtime.py": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "agent_policy.py": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "agent_audit.py": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "agent_trampoline.py": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "authoring_broker.py": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "authoring_mcp.py": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          },
+          "required": [
+            "agent_runtime.py",
+            "agent_policy.py",
+            "agent_audit.py",
+            "agent_trampoline.py",
+            "authoring_broker.py",
+            "authoring_mcp.py"
+          ],
+          "additionalProperties": false
+        },
+        "pythonSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "toolsSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "flags": {
+          "const": [
+            "exec",
+            "--strict-config",
+            "--skip-git-repo-check",
+            "--ephemeral",
+            "--ignore-rules",
+            "--json"
+          ]
+        },
+        "environmentKeys": {
+          "const": [
+            "PATH",
+            "HOME",
+            "CODEX_HOME",
+            "XDG_CONFIG_HOME",
+            "XDG_DATA_HOME",
+            "XDG_CACHE_HOME",
+            "TMPDIR"
+          ]
+        },
+        "context": {
+          "const": "fresh-private-cwd/no-inherited-home/no-project-docs/no-rules/no-skills/no-memory"
+        },
+        "backend": {
+          "const": "linux-bubblewrap-v1"
+        },
+        "profileId": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,127}$"
+        },
+        "credentialRevision": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,127}$"
+        },
+        "credentialProviderSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "adapterRevision",
+        "executableSha256",
+        "version",
+        "model",
+        "catalogSha256",
+        "templateSha256",
+        "support",
+        "pythonSha256",
+        "toolsSha256",
+        "flags",
+        "environmentKeys",
+        "context",
+        "backend",
+        "profileId",
+        "credentialRevision",
+        "credentialProviderSha256"
+      ],
+      "additionalProperties": false
+    },
+    "passed": {
+      "const": true
+    },
+    "auditedAt": {
+      "type": "number",
+      "minimum": 0
+    }
+  },
+  "required": [
+    "schema",
+    "probeRevision",
+    "identity",
+    "passed",
+    "auditedAt"
+  ],
+  "additionalProperties": false
+}

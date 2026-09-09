@@ -1,20 +1,29 @@
 # MirrorGate architecture
 
-Status: reference architecture with an initial Linux implementation. The
-[backend guide](linux-bubblewrap.md) and [task evidence](tasks.md) identify the
-implemented restrictions and limitations; broader platform guarantees remain
-requirements rather than verified claims.
+Status: destination-integrated Linux profile with managed hosting and external
+MBT integration, 2026-09-09; coordinated local gates passed. The
+[backend guide](linux-bubblewrap.md) and [hosting ledger](agent-hosting-tasks.md)
+identify tested restrictions and remaining acceptance. Broader platform/release
+guarantees remain outside this local evidence. Exact results are maintained in
+the [validation report](managed-workflow-validation.md).
 
-The accepted [agent-hosting design](agent-hosting-design.md) extends MirrorGate
-ownership to the trusted agent host. That module is planned: current agent
-launch/configuration still lives in external hosts and experiment helpers.
-The standard outside-agent hosting-tool adapter is also planned MirrorGate-owned
-code; applications configure and register it in their chosen agent framework.
+The [managed agent host](agent-hosting-design.md) and standard outside-agent
+hosting tool are MirrorGate-owned implementations. Applications configure/register
+the supplied adapter or call the native v2 SDK. Actual Codex authoring passed
+through the SDK and installed MCP protocol harness. A real outside Codex
+coordinator also registered the installed adapter and completed the real
+implementer/MBT/cleanup workflow. Synthetic fixtures, protocol-harness evidence
+and actual-framework acceptance remain separately identified.
 
 MirrorGate is intended to manage access boundaries throughout authoring,
 building, and evaluating an application's adapter and system under test (SUT).
 It keeps the implementer's tools and submitted code separate from the private
 validation oracle, while providing a shared interface for isolated execution.
+
+MirrorGate owns all three parts of the managed workflow: agent hosting,
+sandbox/artifact lifecycle, and trusted evaluation integration. The latter
+is outside MirrorECMA core but inside MirrorGate's product ownership. See the
+[R1–R3 responsibility contract](managed-workflow-design.md).
 
 ## Primary user workflow
 
@@ -24,17 +33,19 @@ through Gate's hosting interface, supplying only an approved brief and public
 compiler-generated port declarations. Gate creates the implementer and manages
 authoring, source/build/artifact freezing, restricted execution, and cleanup.
 
-The coordinator also writes the MBT harness. A separate trusted integration
+The coordinator also writes the MBT harness. Gate's trusted evaluation integration
 supplies the generated binding over a Gate worker proxy to MirrorECMA's ordinary
 MBT interface and connects to the existing Mirrors server. This integration owns
 the Gate connection and authorization/cleanup composition. MirrorECMA itself
 does not launch agents, accept prompts, build artifacts, or manage Gate.
 
-This [implementation boundary](../../MirrorECMA/docs/implementation-boundary-design.md)
-is the revised target. Current `evaluateSandboxed` code still couples MirrorECMA
-to Gate and needs an explicit migration. The hosting-tool adapter remains
-Gate-owned and is the primary agent-facing route; native Gate SDK automation
-is also supported by the design. No runtime migration is claimed yet.
+This [implementation boundary](https://github.com/NzSN/MirrorECMA/blob/main/docs/implementation-boundary-design.md)
+is implemented by the external `mirrorgate-mirrorecma` package and coordinated
+MirrorECMA 2 cutover. New consumers use `evaluateImplementation` or the prepared
+provider; the extracted facade remains in the package's `/legacy` entry point.
+The Gate-owned hosting tool is the primary agent-facing route, with direct
+native SDK automation also available. Destination verification and the
+coordinated model/client gates are recorded in the validation report.
 
 ## Ownership
 
@@ -42,21 +53,21 @@ is also supported by the design. No runtime migration is claimed yet.
 | --- | --- |
 | Mirrors | Resolve model interfaces, emit bindings, invoke Apalache, and compare reported observations with model states |
 | Trusted evaluator/caller | Own private specifications, validation configuration, selected scenarios, expected results, task selection, and approval of public context and feedback |
-| MirrorGate | Manage authoring, build, and execution sandboxes, tools, worker RPC, runtime shims, and conformance; planned agent host owns implementer launch, configuration, context delivery, and cleanup |
+| MirrorGate | Manage authoring, build, and execution sandboxes, tools, worker RPC, runtime shims, and conformance; agent host owns implementer launch, configuration, context delivery, and cleanup |
 | Isolation backend | Enforce the configured filesystem, process, privilege, network, and resource restrictions through OS, container, or VM mechanisms |
-| Trusted agent host (planned MirrorGate module; currently external) | Launch/configure the implementer, route access-capable tools through MirrorGate, deliver approved public context, and manage agent lifecycle |
-| Hosting-tool adapter (planned MirrorGate module) | Expose restricted start/status/cancel operations to the outside agent through the public Gate SDK; validate approved task bindings and project allowed results |
+| Trusted agent host (MirrorGate module) | Launch/configure the implementer, route access-capable tools through MirrorGate, deliver approved public context, and manage agent lifecycle |
+| Hosting-tool adapter (MirrorGate module) | Expose restricted start/status/cancel operations to the outside agent through the public Gate SDK; validate approved task bindings and project allowed results |
 | Application integration | Register/configure Gate's agent-facing tools and approve public inputs |
-| Separate trusted evaluation integration | Supply an implementation proxy/binding to MirrorECMA, bridge negotiated admission to Gate, retain Gate ownership, and await cleanup |
-| MirrorECMA | Generic MBT against caller-supplied implementations; Gate-aware orchestration is a migration concern, not target core semantics |
+| MirrorGate-owned trusted evaluation integration | Supply the implementation factory/proxy, bridge negotiated admission, retain ownership, await cleanup, and aggregate evaluation/cleanup evidence |
+| MirrorECMA | Generic MBT against caller-supplied implementations; Gate-aware orchestration resides in the external Gate package |
 | Application implementer | Write the actual SUT and adapter through the public authoring environment, then submit a fixed artifact for evaluation |
 
 The complete specification may contain public interface information as well as
 private invariants and transition logic. The evaluator exports the public
 contract needed by the implementer; it retains the private validation material.
 
-MirrorECMA provides generic MBT and binding execution. A separate trusted
-integration composes it with Gate's implementation proxy. Trust belongs to the
+MirrorECMA provides generic MBT and binding execution. A supported Gate-owned
+integration composes it with the implementation proxy and owns the local workflow. Trust belongs to the
 evaluator code/configuration and its execution environment, not to a library name.
 Gate's core does not depend on MirrorECMA; the optional integration uses only
 public interfaces from both libraries.
@@ -79,8 +90,7 @@ host an authoring agent that can change the submission between private cases.
 An authoring agent may have broad development capabilities within its own
 profile without gaining access to the evaluation environment.
 
-The trusted agent host, owned by MirrorGate in the target design, must route
-the coding agent's filesystem operations,
+The MirrorGate-owned trusted agent host routes the coding agent's filesystem operations,
 shell commands, search, builds, and other resource-access tools through
 MirrorGate-managed execution or an explicitly approved restricted integration.
 The agent must not retain an unrestricted host tool or connector that can read
@@ -106,14 +116,14 @@ profile's blindness guarantee.
 ```mermaid
 flowchart TB
     User["User"] <-->|"Requirements and specifications"| Coordinator["User-started coordinating agent"]
-    Coordinator -->|"Approved brief and public port"| HostingTool["Gate hosting tool / SDK: planned"]
-    Coordinator -->|"Write MBT harness"| Integration["Separate trusted evaluation integration"]
+    Coordinator -->|"Approved brief and public port"| HostingTool["Gate hosting tool / native v2 SDK"]
+    Coordinator -->|"Write MBT harness"| Integration["Gate-owned trusted evaluation integration"]
     subgraph Trusted["Trusted evaluation environment"]
         Spec["Behavior specification + invariants"] --> Mirrors["Existing Mirrors server + Apalache"]
         Mirrors <-->|"Model protocol"| MBT["MirrorECMA + trusted generated binding"]
         Integration -->|"Supply implementation factory"| MBT
         Integration -->|"Matched admission, owner lifecycle"| Supervisor["MirrorGate supervisor"]
-        HostingTool --> Host["MirrorGate agent host: planned"]
+        HostingTool --> Host["MirrorGate agent host"]
         Host -->|"Bind tools to owning session"| Supervisor
         Host -->|"Launch with approved context"| Agent["Restricted implementer"]
         Supervisor --> Backend["Linux / Bubblewrap enforcement"]
@@ -143,14 +153,14 @@ profile governs its accessible resources and tool execution, not the physical
 location of model inference. Its host exposes the managed tool gateway without
 an independent path to evaluator resources.
 
-The agent-host node shows planned ownership, not an implemented launcher.
-Its trusted process and model credentials remain outside the writable authoring
-environment. Native clients will request hosting through shared Gate control
+The agent-host node is implemented by Gate's audited runtime adapter. Its trusted
+process and model credentials remain outside the writable authoring environment.
+Native clients request hosting through [shared control v2](agent-hosting-control-v2.md)
 without implementing their own launchers. External hosts and human authoring
 remain optional integrations with their own tool/context obligations. See the
 [hosting lifecycle](agent-hosting-design.md#lifecycle-and-failure-rules).
 
-For direct tool invocation by the outside coordinating agent, MirrorGate will supply the
+For direct tool invocation by the outside coordinating agent, MirrorGate supplies the
 [standard hosting-tool adapter](agent-hosting-design.md#standard-hosting-tool-adapter).
 The application registers it and configures approved tasks and profiles. Its
 start/status/cancel tools are distinct from the implementer's restricted
@@ -166,16 +176,19 @@ authoring source is not mounted live into an active private evaluation.
 ## Harness reuse and evaluation-service access
 
 The trusted MBT harness can be a reusable source module called by a test file,
-CLI, or optional evaluation service. The service wrapper belongs to the external
-trusted integration; suites and disclosure policy belong to the evaluator.
-MirrorECMA still receives a generic implementation factory/binding.
+CLI, or optional evaluation service. The supported local workflow and optional
+service wrapper both belong to Gate's trusted evaluation integration; suites
+and disclosure policy belong to the evaluator.
+MirrorECMA still receives a generic implementation factory/binding. The optional
+service implements [authenticated loopback HTTP v1](evaluation-service-contract-v1.md)
+over that same workflow; remote HTTP/TLS deployment is not implemented.
 
 An implementation proxy carries public operations between the generated binding
 and the SUT. An evaluation-service proxy lets an outside caller start/query/cancel
 an entire MBT run. They are separate interfaces and may be composed. Service
 RPC does not extend Gate control v1, worker RPC, or the Mirrors model protocol.
 See the [evaluation-service design](evaluation-service-design.md) and
-[harness/source-test design](../../MirrorECMA/docs/mbt-harness-design.md).
+[harness/source-test design](https://github.com/NzSN/MirrorECMA/blob/main/docs/mbt-harness-design.md).
 
 ## The public port is the RPC seam
 
@@ -235,17 +248,19 @@ result disclosure remain separate obligations, as described in
 
 ## Repository and dependency boundaries
 
-The intended repository areas are `protocol/`, `supervisor/`, `runtimes/`,
-`conformance/`, and `docs/`. Python supervision and Node/Rust runtime shims are
+The repository areas are `protocol/`, `supervisor/`, `runtimes/`, `sdk/`,
+`integrations/`, `conformance/`, and `docs/`. Python supervision and Node/Rust runtime shims are
 implemented; other language workers and backends remain extensions.
 
 Mirrors remains authoritative for model-interface resolution and generation.
 MirrorGate consumes versioned public artifacts and provides SDK/protocol
 interfaces for generated code to target. It does not duplicate the resolver or
-depend on MirrorECMA's private modules. External integrations depend on public
+depend on MirrorECMA's private modules. Gate-owned integrations depend on public
 MirrorGate and MirrorECMA interfaces through explicit compatible versions.
-The revised MirrorECMA core does not depend on Gate's SDK or lifecycle; current
-coupled sandbox exports require the migration recorded in the task ledger.
+The coordinated MirrorECMA 2 core does not depend on Gate's SDK or lifecycle;
+its removed sandbox exports are available through the external package's
+compatibility entry point. The task ledger links completed destination/core
+cutover evidence and completed actual-framework acceptance.
 
 Protocol compatibility, runtime profile identity, and semantic interface
 identity are distinct. See [worker protocol](worker-protocol.md). The private

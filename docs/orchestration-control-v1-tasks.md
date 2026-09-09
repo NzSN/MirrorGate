@@ -1,5 +1,11 @@
 # Orchestration Control v1 — Implementation Tasks
 
+This ledger records completed control-v1 work and its historical assignments.
+New managed hosting, external MBT integration, and evaluation-service work is
+tracked separately in [AH1–AH12](agent-hosting-tasks.md), assigned to
+`specification_implementer`. The old role names and successful v1 gates below
+do not constitute current hosting/service implementation assignments or evidence.
+
 Status: Gate-side implementation complete and integrated into the MirrorGate
 checkout from `051ac0c`; both local and destination aggregate gates passed.
 The controlling design is
@@ -12,9 +18,10 @@ coordinator owns integration, independent review, final gates, and this ledger.
 Implement the MirrorGate controller, backend preparation/worker broker, Node
 and C++ control/managed-worker SDKs, and shared control/backend acceptance.
 Keep the frozen worker-v1 protocol and existing administrative `run` interface.
-The actual MirrorECMA/MirrorCPP model-facing facades remain the subsequent
-client-repository landing; their absence must not be represented as a passing
-cross-client section-13 result.
+At this landing, the MirrorECMA/MirrorCPP model-facing facades were assigned
+to a subsequent step. That step and the later managed-host migration now pass
+[final validation](managed-workflow-validation.md); the older Gate-only results
+below remain evidence of their original scope.
 
 ## Assignments and ownership
 

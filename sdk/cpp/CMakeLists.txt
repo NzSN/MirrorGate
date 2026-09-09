@@ -27,6 +27,7 @@ add_library(mirrorgate_cpp
   src/json.cpp
   src/transport.cpp
   src/control.cpp
+  src/control_v2.cpp
   src/managed_worker.cpp)
 add_library(mirrorgate::cpp ALIAS mirrorgate_cpp)
 target_include_directories(mirrorgate_cpp PUBLIC
@@ -54,4 +55,17 @@ if(BUILD_TESTING)
   target_link_libraries(mirrorgate_transport_tests PRIVATE mirrorgate::cpp)
   target_compile_options(mirrorgate_transport_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
   add_test(NAME mirrorgate_transport_tests COMMAND mirrorgate_transport_tests)
+endif()
+
+if(BUILD_TESTING)
+  add_executable(mirrorgate_hosting_tests ../../tests/cpp/hosting_test.cpp)
+  target_link_libraries(mirrorgate_hosting_tests PRIVATE mirrorgate::cpp)
+  target_compile_options(mirrorgate_hosting_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+  add_test(NAME mirrorgate_hosting_tests COMMAND mirrorgate_hosting_tests
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../conformance/control-v2/vectors.jsonl")
+endif()
+if(BUILD_TESTING)
+  add_executable(mirrorgate_hosting_e2e ../../tests/cpp/hosting_e2e.cpp)
+  target_link_libraries(mirrorgate_hosting_e2e PRIVATE mirrorgate::cpp)
+  target_compile_options(mirrorgate_hosting_e2e PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()

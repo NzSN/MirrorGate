@@ -1,7 +1,11 @@
 # MirrorGate implementation plan
 
-Status: initial local profile implemented. See [assigned tasks and evidence](tasks.md).
-Hosted release and private-corpus evaluation remain distinct follow-up work.
+Status: initial profile, managed hosting, external MBT workflow and optional local
+HTTP service implemented and exercised locally, 2026-09-09. See the
+[hosting task ledger](agent-hosting-tasks.md) and
+[validation report](managed-workflow-validation.md) for passed destination and
+coordinated gates, including actual outside-Codex MCP acceptance (AH11.2). Hosted
+release and separately maintained private-corpus evaluation remain distinct work.
 
 Read the [architecture](architecture.md), [isolation requirements](blind-validation.md),
 and [worker protocol](worker-protocol.md) together before implementing a seam.
@@ -72,62 +76,69 @@ reject faulty implementations, and pass the defined oracle-access denial tests.
 Done: a clean checkout reproduces the supported matrix and the release states
 exactly which profiles and isolation guarantees were exercised.
 
-## M6 — Managed agent hosting (planned)
+## M6 — Managed agent hosting (destination and actual framework verified)
 
-The accepted [agent-hosting design](agent-hosting-design.md) makes the trusted
-agent host an optional MirrorGate module. Every item below is unimplemented;
-the external Counter experiment helpers are migration inputs only.
+The [agent-hosting design](agent-hosting-design.md) is implemented through
+[control v2](agent-hosting-control-v2.md), the runtime/broker and native SDKs.
+The [task ledger](agent-hosting-tasks.md) records named implementer ownership,
+local evidence and the remaining checks. Historical experiment helpers supplied
+migration inputs; applications now use Gate's public modules.
 
-The [agent-hosting task ledger](agent-hosting-tasks.md) assigns implementation to
-`specification_implementer` and records dependencies and acceptance evidence.
+- [x] Freeze control v2, closed operator profiles, runtime requirements, limits,
+  ownership and submission/cancellation ordering; retain frozen v1 compatibility.
+- [x] Implement the Codex 0.153.4 adapter, restricted broker/tools, fresh context,
+  credential custody, runtime dispatcher audit and per-run descendant cleanup.
+- [x] Own fresh runs through source commitment and bounded cleanup; prepare
+  exactly once from the same frozen lease after confirmed host cleanup.
+- [x] Expose shared lifecycle through Node and C++ v2 clients with owned/attached
+  control and no client-owned implementer launcher.
+- [x] Extract Gate-aware evaluation into `mirrorgate-mirrorecma`; implement the
+  coordinated MirrorECMA 2 core cutover without a managed-author core option.
+- [x] Supply `mirrorgate/hosting-tool` and its stdio MCP CLI, approved task/run
+  references, registration/configuration and installed dispatch tests.
+- [x] Supply the R3 local workflow and trusted/public receipts (AH8.6), plus an
+  installed Counter application requiring no per-run lifecycle/packing scripts
+  (AH8.7). Correct/faulty and same-owner callback paths pass locally.
+- [x] Exercise actual SDK-driven Codex authoring and an actual implementer through
+  the installed MCP protocol harness; validate the same submitted source twice
+  against the independently running mTLS Mirrors server.
+- [x] Complete real outside-Codex framework registration and the outer/inner-agent
+  workflow after the standard progress-metadata compatibility fix (AH11.2).
+- [x] Complete destination and coordinated Gate/MirrorECMA/Mirrors gates; record
+  exact identities and exits in the authoritative validation report.
 
-- [ ] Specify the versioned control extension, operator agent profiles, supported
-  runtime requirements, limits, ownership, and submission/cancellation ordering.
-- [ ] Promote generic launcher, broker, context/tool configuration, and cleanup
-  into Gate; implement the first supported Codex runtime integration.
-- [ ] Own fresh agent runs through submission, source sealing, and bounded
-  cleanup, preserving existing preparation and worker admission ordering.
-- [ ] Expose the same lifecycle through native clients without client-owned
-  launchers or a manually started separate agent-host daemon.
-- [ ] Keep MirrorECMA's MBT interface implementation-neutral; extract current
-  Gate-aware evaluation composition into an external integration with an
-  explicit consumer-migration plan. No managed-agent author option is added.
-- [ ] Ship the standard outside-agent hosting-tool adapter with configuration,
-  public task bindings, caller-scoped run references, and actual dispatch tests;
-  applications register/configure it without writing a custom hosting wrapper.
-- [ ] Migrate the experiment so the coordinator requests hosting from Gate
-  directly and the external integration supplies an implementation proxy to
-  generic MirrorECMA MBT, retaining private evaluation and disclosure control.
-- [ ] Verify actual tool denial, context isolation, credential custody, foreign
-  handles, sealing races, failure cleanup, and fresh private evaluation through
-  the public interface with two native clients.
+Completion requires the full declared hosting acceptance, compatible native
+clients and final destination gates. Resume, follow-up messaging, delegation,
+automatic retries and production publication remain outside this first profile.
 
-Done: the hosting acceptance matrix passes on the declared agent/runtime/backend
-versions, existing gates remain green, and compatibility records the evidence.
-Resume, follow-up messaging, delegation, and automatic retries remain future work.
+## M7 — Reusable harness and optional local evaluation service
 
-## M7 — Reusable harness and optional evaluation service (planned)
+- [x] Extract a reusable trusted suite with source-test and CLI entry points,
+  deferred local/proxy factories and unchanged generic MirrorECMA MBT semantics.
+- [x] Freeze the separate [evaluation-service v1 contract](evaluation-service-contract-v1.md):
+  caller authentication, approved references, epoch/start-key deduplication,
+  bounded retention, deadlines, cancellation and public result projection.
+- [x] Implement the optional loopback HTTP service and supplied proxy through the
+  existing R3 workflow. Installed correct/faulty Counter results agree with the
+  same source suite using real Gate workers and Mirrors; cleanup is confirmed.
+- [x] Test malformed/cross-caller requests, uncertain replies, floods, stalled
+  responses, getter mutation, local polling deadlines and failed/unconfirmed
+  cleanup. Keep model/control/worker/service handles and private data separate.
+- [x] Include destination service/package and installed workflow/MCP checks in
+  coordinator validation evidence.
 
-- [ ] Extract a reusable trusted MBT suite with source-test and CLI entry points
-  as part of AH8, preserving deferred implementation factories and generic MBT.
-- [ ] Specify AH12's versioned evaluation-service contract, approved suite and
-  implementation references, caller/run identity, bounds, retention, and cleanup.
-- [ ] Implement the optional service/proxy in the external integration and verify
-  the same fixed-input outcomes as local suite calls, including negative paths.
-- [ ] Keep private suite identity and mounts independent of submitted source;
-  keep service/model/control/worker channels and their handles distinct.
-
-Done: AH12's service acceptance passes with recorded versions and commands.
-Source-code tests and base hosting remain usable without the service. This
-milestone does not advertise remote Gate control or change MirrorECMA semantics.
+Source tests and base hosting remain usable without the service. This profile
+exposes only authenticated loopback HTTP; remote HTTP/TLS, durable restart and
+remote Gate control are not implemented. No MirrorECMA service API is introduced.
 
 ## Work assignment boundaries
 
 After M0, separate ownership can cover the supervisor/backend, protocol and
 trusted proxy, each language shim, and evaluator integration. Shared schemas
 and lifecycle rules need one owner; dependent work starts from that interface.
-Concrete subagent ownership and first-profile selections are recorded in
-[tasks.md](tasks.md).
+Concrete ownership and current hosting/migration/service acceptance are recorded
+in [agent-hosting-tasks.md](agent-hosting-tasks.md); the initial worker profile
+remains recorded in [tasks.md](tasks.md).
 
 Runtime code and documented local commands are implemented. Hosted CI execution,
 release publication, controlled runtime image packaging, and separately maintained

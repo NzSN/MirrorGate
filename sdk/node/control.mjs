@@ -4,6 +4,7 @@ import net from 'node:net';
 import {isAbsolute, normalize, parse as parsePath, resolve as resolvePath} from 'node:path';
 import {EventEmitter} from 'node:events';
 import {LIMITS as WORKER_LIMITS, parseJson as parseWorkerJson, validateManifest} from './protocol.mjs';
+import {HOSTING_CAPABILITY, validateControlV2Request, validateControlV2Response, validateControlV2Event} from './control-v2.mjs';
 
 export const CONTROL_LIMITS = Object.freeze({
   frameBytes: 1_048_576,
@@ -529,14 +530,18 @@ function validateLaunchOptions(controller) {
 }
 function duration(value, fallback, label) { const checked = value ?? fallback; return positive(checked, label); }
 function prepareClientOptions(options = {}) {
-  const requiredCapabilities = options.requiredCapabilities ?? [];
-  validateArgs('hello', {controlVersions: [1], requiredCapabilities});
+  const controlVersion = options.controlVersion ?? 1;
+  if (controlVersion !== 1 && controlVersion !== 2) bad('Unsupported requested control version');
+  const requiredCapabilities = [...(options.requiredCapabilities ?? [])];
+  if (controlVersion === 2 && !requiredCapabilities.includes(HOSTING_CAPABILITY)) requiredCapabilities.push(HOSTING_CAPABILITY);
+  validateArgs('hello', {controlVersions: [controlVersion], requiredCapabilities});
   if (options.onStderr !== undefined && typeof options.onStderr !== 'function') bad('Invalid controller log consumer');
   return {
+    controlVersion,
     requiredCapabilities: Object.freeze([...requiredCapabilities]),
     helloTimeoutMs: duration(options.helloTimeoutMs, 5_000, 'hello timeout'),
     requestTimeoutMs: duration(options.requestTimeoutMs, 5_000, 'request timeout'),
-    closeTimeoutMs: duration(options.closeTimeoutMs, 5_000, 'close timeout'),
+    closeTimeoutMs: duration(options.closeTimeoutMs, controlVersion === 2 ? 7_000 : 5_000, 'close timeout'),
     stderrLimit: duration(options.stderrLimit, 65_536, 'stderr limit'),
     onStderr: options.onStderr,
   };
@@ -619,6 +624,78 @@ export class AuthorizationHandle extends OwnedHandle {
   }
 }
 
+/** Connection-owned hosting reference. It cannot be reconstructed or adopted. */
+export class HostedAgentRun extends OwnedHandle {
+  constructor(session, id, construction) {
+    if (construction !== HANDLE_CONSTRUCTION) throw protocolFailure('HANDLE_INVALID', 'Hosted runs are created by ControlSession');
+    super(session);
+    this.session = session; this.id = id; this.latest = null; this.cancelPromise = null;
+  }
+  _observe(run) {
+    if (run.runId !== this.id) bad('Hosted run correlation mismatch');
+    if (this.latest?.submission && JSON.stringify(this.latest.submission) !== JSON.stringify(run.submission)) bad('Committed submission identity changed');
+    this.latest = deepFreeze(run);
+    return this.latest;
+  }
+  async status(options) {
+    this.session._owned(this, HostedAgentRun, 'hosted run');
+    const result = await this.session.client._request('agent.status', {sessionId: this.session.id, runId: this.id}, options);
+    return this._observe(result.run);
+  }
+  cancel(reason = 'user-cancel', options = {}) {
+    this.session._owned(this, HostedAgentRun, 'hosted run');
+    if (!this.cancelPromise) {
+      const client = this.session.client;
+      const timeoutMs = Math.max(7_000, client.hello.limits.gracefulStopMs + client.hello.limits.teardownMs + 1_000,
+        client.hello.limits.requestAckTimeoutMs,
+        options.timeoutMs ?? client.requestTimeoutMs);
+      this.cancelPromise = client._request('agent.cancel', {sessionId: this.session.id, runId: this.id, reason},
+        {...options, timeoutMs}).then(result => this._observe(result.run));
+    }
+    return this.cancelPromise;
+  }
+  async wait({signal, timeoutMs = 307_000, pollMs = 100} = {}) {
+    positive(timeoutMs, 'hosting wait timeout'); positive(pollMs, 'hosting poll interval');
+    if (signal !== undefined && !(signal instanceof AbortSignal)) bad('Expected an AbortSignal');
+    const until = performance.now() + timeoutMs;
+    const cancelled = () => protocolFailure('CONTROL_WAIT_CANCELLED', 'Hosted run wait cancelled');
+    const expired = () => protocolFailure('CONTROL_WAIT_TIMEOUT', 'Hosted run wait deadline exceeded');
+    // A local waiter does not own the underlying request's lifetime. Keep the
+    // read on its normal control timeout and observe eventual settlement even
+    // after this waiter leaves; only explicit cancel() mutates the hosted run.
+    const waitForRead = pending => new Promise((resolve, reject) => {
+      let settled = false, timer;
+      const finish = callback => {
+        if (settled) return;
+        settled = true; clearTimeout(timer); signal?.removeEventListener('abort', abort);
+        callback();
+      };
+      const abort = () => finish(() => reject(cancelled()));
+      signal?.addEventListener('abort', abort, {once: true});
+      timer = setTimeout(() => finish(() => reject(expired())), Math.max(1, Math.ceil(until - performance.now())));
+      pending.then(result => finish(() => {
+        if (signal?.aborted) reject(cancelled());
+        else if (performance.now() >= until) reject(expired());
+        else resolve(result);
+      }), error => finish(() => reject(error)));
+      if (signal?.aborted) abort();
+    });
+    while (true) {
+      if (signal?.aborted) throw cancelled();
+      if (performance.now() >= until) throw expired();
+      const result = await waitForRead(this.status());
+      if (result.phase === 'finished') return result;
+      const remaining = until - performance.now();
+      if (remaining <= 0) throw expired();
+      await new Promise((resolve, reject) => {
+        const abort = () => { clearTimeout(timer); reject(protocolFailure('CONTROL_WAIT_CANCELLED', 'Hosted run wait cancelled')); };
+        const timer = setTimeout(() => { signal?.removeEventListener('abort', abort); resolve(); }, Math.min(pollMs, remaining));
+        signal?.addEventListener('abort', abort, {once: true});
+      });
+    }
+  }
+}
+
 export class WorkerReservation extends OwnedHandle {
   constructor(session, descriptor, construction) {
     if (construction !== HANDLE_CONSTRUCTION) throw protocolFailure('HANDLE_INVALID', 'Worker reservations are created by ControlSession');
@@ -659,6 +736,8 @@ export class ControlSession extends OwnedHandle {
     this.outputChunks = new Map();
     this.closing = false;
     this.cleanupRequest = null;
+    this.hostedRun = null;
+    this.hostedStartPromise = null;
   }
   _owned(value, Type, label) {
     if (!(value instanceof Type) || !value._belongsTo(this)) throw protocolFailure('HANDLE_INVALID', `Foreign ${label}`);
@@ -685,6 +764,40 @@ export class ControlSession extends OwnedHandle {
   async authoringExec({toolId, arguments: args, cwd = '.'}, options) {
     const result = await this.client._request('authoring.exec', {sessionId: this.id, toolId, arguments: args, cwd}, {...options, session: this, terminalName: 'CommandResult'});
     return this.operations.get(result.operationId);
+  }
+  _requireHosting() {
+    if (this.client.controlVersion !== 2 || !this.client.hello.capabilities.some(cap => cap.id === HOSTING_CAPABILITY && cap.available)) {
+      throw protocolFailure('CONTROL_CAPABILITY_UNAVAILABLE', 'Managed hosting requires a v2 hosting-capable owner connection');
+    }
+  }
+  _registerHostedRun(id) {
+    if (this.hostedRun && this.hostedRun.id !== id) bad('Hosted run identity changed in one session');
+    this.hostedRun ??= new HostedAgentRun(this, id, HANDLE_CONSTRUCTION);
+    return this.hostedRun;
+  }
+  async startAgent({profileId, publicTask, limits}, options) {
+    this._requireHosting();
+    if (this.hostedStartPromise || this.hostedRun) throw protocolFailure('STATE_INVALID', 'A hosted start has already been requested');
+    if (options?.signal !== undefined && !(options.signal instanceof AbortSignal)) bad('Expected an AbortSignal');
+    if (options?.signal?.aborted) throw protocolFailure('CONTROL_REQUEST_CANCELLED', 'Hosted start cancelled before dispatch');
+    if (options?.timeoutMs !== undefined) positive(options.timeoutMs, 'request timeout');
+    const args = {sessionId: this.id, profileId, publicTask};
+    if (limits !== undefined) args.limits = limits;
+    validateControlV2Request({v: 2, kind: 'request', id: 1, op: 'agent.start', args});
+    const snapshot = deepFreeze(parseControlJson(JSON.stringify(args)));
+    this.hostedStartPromise = this.client._request('agent.start', snapshot, {...options, session: this, hostedStart: true});
+    try { await this.hostedStartPromise; return this.hostedRun; }
+    catch (error) {
+      // Definitive controller rejection allocated no run. An uncertain dispatch
+      // poisons the owner connection and must never be retried.
+      if (error instanceof ControlError) this.hostedStartPromise = null;
+      throw error;
+    }
+  }
+  async agentStatus(options) {
+    this._requireHosting();
+    const result = await this.client._request('agent.status', {sessionId: this.id}, options);
+    return result.run === null ? null : this._registerHostedRun(result.run.runId)._observe(result.run);
   }
   async prepare(options) {
     const result = await this.client._request('session.prepare', {sessionId: this.id}, {...options, session: this, terminalName: 'Prepared'});
@@ -785,6 +898,12 @@ export class ControlSession extends OwnedHandle {
     });
   }
   _receiveEvent(event) {
+    if (event.event === 'agent.updated' || event.event === 'agent.finished') {
+      if (!this.hostedRun || this.hostedRun.id !== event.data.run.runId) bad('Event references an unknown hosted run');
+      this.hostedRun._observe(event.data.run);
+      this._rememberEvent(deepFreeze(event));
+      return;
+    }
     switch (event.event) {
       case 'operation.finished': {
         const operationId = event.data?.operationId;
@@ -839,9 +958,19 @@ export class ControlClient {
       closed,
       () => {
         if (!exited) {
-          child.stdin.destroy();
-          child.kill('SIGTERM');
-          killTimer ??= setTimeout(() => { if (!exited) child.kill('SIGKILL'); }, Math.min(1_000, checked.closeTimeoutMs));
+          if (checked.controlVersion === 2) {
+            // Owner EOF is the controller's revocation/cleanup signal. Killing
+            // it immediately could preempt cleanup of its hosted descendants.
+            child.stdin.end();
+            killTimer ??= setTimeout(() => {
+              if (!exited) child.kill('SIGTERM');
+              killTimer = setTimeout(() => { if (!exited) child.kill('SIGKILL'); }, 1_000);
+            }, Math.max(7_000, checked.closeTimeoutMs));
+          } else {
+            child.stdin.destroy();
+            child.kill('SIGTERM');
+            killTimer ??= setTimeout(() => { if (!exited) child.kill('SIGKILL'); }, Math.min(1_000, checked.closeTimeoutMs));
+          }
         }
         return closed;
       },
@@ -908,7 +1037,7 @@ export class ControlClient {
     transport.onClose?.(error => { if (!this.closing || this.pending.size) this._fatal(error instanceof Error ? error : protocolFailure('CONTROL_DISCONNECTED', 'Control transport closed')); });
   }
   async _hello() {
-    this.hello = deepFreeze(await this._request('hello', {controlVersions: [1], requiredCapabilities: [...this.requiredCapabilities]}, {timeoutMs: this.helloTimeoutMs, bootstrap: true}));
+    this.hello = deepFreeze(await this._request('hello', {controlVersions: [this.controlVersion], requiredCapabilities: [...this.requiredCapabilities]}, {timeoutMs: this.helloTimeoutMs, bootstrap: true}));
     this.maxInflightRequests = Math.min(CONTROL_LIMITS.inflightRequests, this.hello.limits.maxInflightRequestsPerConnection);
     this.maxPendingOutputBytes = Math.min(CONTROL_LIMITS.pendingOutputBytes, this.hello.limits.maxPendingOutputBytes);
   }
@@ -923,22 +1052,26 @@ export class ControlClient {
     this.sessions.set(session.id, session);
     return session;
   }
-  _request(op, args, {signal, timeoutMs = this.requestTimeoutMs, session, terminalName, terminalValidator, bootstrap = false} = {}) {
+  _request(op, args, {signal, timeoutMs = this.requestTimeoutMs, session, terminalName, terminalValidator, bootstrap = false, hostedStart = false} = {}) {
     if (this.terminalError) return Promise.reject(this.terminalError);
     if (this.closing) return Promise.reject(protocolFailure('CONTROL_DISCONNECTED', 'Control client is closing'));
     if (this.pending.size >= (this.maxInflightRequests ?? CONTROL_LIMITS.inflightRequests)) return Promise.reject(protocolFailure('CONTROL_LIMIT_EXCEEDED', 'Too many in-flight control requests'));
     if (signal !== undefined && !(signal instanceof AbortSignal)) return Promise.reject(protocolFailure('CONTROL_PROTOCOL_ERROR', 'Expected an AbortSignal'));
     if (signal?.aborted) return Promise.reject(protocolFailure('CONTROL_REQUEST_CANCELLED', 'Control request cancelled before dispatch'));
-    try { positive(timeoutMs, 'request timeout'); validateArgs(op, args); } catch (error) { return Promise.reject(error); }
+    try {
+      positive(timeoutMs, 'request timeout');
+      if (this.controlVersion === 2) validateControlV2Request({v: bootstrap ? 1 : 2, kind: 'request', id: this.nextId, op, args});
+      else validateArgs(op, args);
+    } catch (error) { return Promise.reject(error); }
     if (!safePositive(this.nextId)) return Promise.reject(protocolFailure('CONTROL_LIMIT_EXCEEDED', 'Request ID space exhausted'));
-    const request = {v: 1, kind: 'request', id: this.nextId++, op, args};
+    const request = {v: bootstrap ? 1 : this.controlVersion, kind: 'request', id: this.nextId++, op, args};
     let encoded;
     try { encoded = controlFrame(request); } catch (error) { return Promise.reject(error); }
     if ((this.transport.writable.writableLength ?? 0) + encoded.length > (this.maxPendingOutputBytes ?? CONTROL_LIMITS.pendingOutputBytes)) {
       const error = protocolFailure('CONTROL_LIMIT_EXCEEDED', 'Pending control output limit exceeded'); this._fatal(error); return Promise.reject(error);
     }
     return new Promise((resolve, reject) => {
-      const entry = {request, resolve, reject, signal, abort: null, timer: null, session, terminalName, terminalValidator, bootstrap};
+      const entry = {request, resolve, reject, signal, abort: null, timer: null, session, terminalName, terminalValidator, bootstrap, hostedStart};
       this.pending.set(request.id, entry);
       entry.abort = () => this._fatal(protocolFailure('CONTROL_REQUEST_CANCELLED', 'Control request result became uncertain'));
       signal?.addEventListener('abort', entry.abort, {once: true});
@@ -952,23 +1085,29 @@ export class ControlClient {
     if (error) entry.reject(error); else entry.resolve(value);
   }
   _receive(message) {
-    if (message.kind === 'event') { validateControlEventEnvelope(message); this._receiveEvent(message); return; }
+    if (message.kind === 'event') {
+      if (this.controlVersion === 2) validateControlV2Event(message); else validateControlEventEnvelope(message);
+      this._receiveEvent(message); return;
+    }
     if (!object(message) || message.kind !== 'response') bad('Unexpected control envelope kind');
     if (message.ok === true) exact(message, ['v', 'kind', 'id', 'ok', 'result']);
     else if (message.ok === false) exact(message, ['v', 'kind', 'id', 'ok', 'error']);
     else bad('Invalid control response status');
-    if (message.v !== 1) bad('Unsupported control response version');
     positive(message.id, 'response ID');
     const entry = this.pending.get(message.id);
     if (!entry) bad('Unsolicited or incorrectly correlated control response');
+    if (this.controlVersion === 2) {
+      validateControlV2Response(message, {request: entry.request, terminalValidator: entry.terminalValidator});
+    } else if (message.v !== 1) bad('Unsupported control response version');
     if (message.ok === false) {
-      validateControlError(message.error);
+      if (this.controlVersion !== 2) validateControlError(message.error);
       this._settle(entry, new ControlError(message.error));
       return;
     }
     if (message.ok !== true) bad('Invalid control response status');
-    const result = validateResult(entry.request.op, message.result, {requiredCapabilities: this.requiredCapabilities, terminalValidator: entry.terminalValidator, operationId: entry.request.args.operationId});
+    const result = this.controlVersion === 2 ? message.result : validateResult(entry.request.op, message.result, {requiredCapabilities: this.requiredCapabilities, terminalValidator: entry.terminalValidator, operationId: entry.request.args.operationId});
     if (entry.session && entry.terminalName) entry.session._registerOperation(result, entry.terminalName);
+    if (entry.session && entry.hostedStart) entry.session._registerHostedRun(result.runId);
     this._settle(entry, null, result);
   }
   _receiveEvent(message) {
@@ -976,7 +1115,7 @@ export class ControlClient {
     if (message.seq !== this.nextEventSeq) bad('Control event sequence is not contiguous');
     this.nextEventSeq++;
     handle(message.sessionId, 'event session ID');
-    oneOf(message.event, EVENT_NAMES, 'event name');
+    if (this.controlVersion !== 2) oneOf(message.event, EVENT_NAMES, 'event name');
     const session = this.sessions.get(message.sessionId);
     if (!session) bad('Control event references an unknown session');
     session._receiveEvent(message);
@@ -1003,10 +1142,14 @@ export class ControlClient {
       try { this.transport.writable.end(); } catch {}
       let timer;
       try {
-        await Promise.race([
+        const receipt = await Promise.race([
           this.transport.closed,
           new Promise((_, reject) => { timer = setTimeout(() => reject(protocolFailure('CONTROL_CLEANUP_TIMEOUT', 'Control transport cleanup deadline exceeded')), this.closeTimeoutMs); }),
         ]);
+        if (this.controlVersion === 2 && this.transport.ownership === 'owned' &&
+            (!receipt || receipt.code !== 0 || receipt.signal != null)) {
+          throw protocolFailure('CONTROL_CLEANUP_FAILED', 'Owned hosting controller did not confirm a clean exit');
+        }
       } catch (error) {
         try { await this._stop(); } catch {}
         throw error;

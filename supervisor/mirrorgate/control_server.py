@@ -1,4 +1,4 @@
-"""Bounded stdio and credential-checked filesystem Unix serving for control v1."""
+"""Bounded stdio and credential-checked filesystem Unix serving for negotiated control v1/v2."""
 from __future__ import annotations
 
 import os
@@ -107,7 +107,7 @@ def serve_stream(reader, writer, backend, *, principal_uid: int, connection_mode
             if len(data) > MAX_FRAME_BYTES + 1 or not data.endswith(b"\n"): break
             current_op=None
             try:
-                request = validate_request(parse_control_frame(data))
+                request = controller.validate_request(parse_control_frame(data))
                 current_op=request["op"]
                 response = controller.dispatch(request)
             except ControlProtocolError as exc:

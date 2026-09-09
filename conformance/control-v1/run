@@ -54,20 +54,14 @@ driver="$scratch/cpp-build/mirrorgate_mirrorcpp_counter"
 "$scratch/cpp-build/mirrorgate_mirrorcpp_receipt_tests"
 
 consumer="$scratch/ts-consumer"
-ecma_package="$consumer/node_modules/mirrorecma"
-gate_package="$consumer/node_modules/mirrorgate"
-mkdir -p "$ecma_package" "$gate_package" "$scratch/npm-pack"
-"$mirrorecma_root/node_modules/.bin/tsc" -p "$mirrorecma_root/tsconfig.sandbox.json" \
-  --outDir "$ecma_package/dist-sandbox"
-printf '%s\n' '{"name":"mirrorecma","type":"module","main":"./dist-sandbox/src/index.js"}' \
-  > "$ecma_package/package.json"
-npm_config_cache="$scratch/npm-cache" npm pack --pack-destination "$scratch/npm-pack" \
-  --silent >/dev/null
-gate_archive="$(find "$scratch/npm-pack" -maxdepth 1 -name '*.tgz' -print -quit)"
-[[ -f "$gate_archive" ]] || { echo 'MirrorGate package archive was not produced' >&2; exit 1; }
-tar -xzf "$gate_archive" --strip-components=1 -C "$gate_package"
-ts_driver="$ecma_package/dist-sandbox/test/sandbox-counter.smoke.js"
-[[ -f "$ts_driver" ]] || { echo "MirrorECMA sandbox smoke was not compiled: $ts_driver" >&2; exit 1; }
+MIRRORECMA_ROOT="$mirrorecma_root" node "$gate_root/integrations/mirrorecma/scripts/matrix-consumer.mjs" "$consumer"
+ts_driver="$consumer/compiled/test/legacy-matrix-driver.js"
+gate_archive="$(python3 - "$consumer/matrix-consumer.json" <<'PYJSON'
+import json, sys
+print(json.load(open(sys.argv[1]))['archives']['mirrorgate'])
+PYJSON
+)"
+[[ -f "$ts_driver" && -f "$gate_archive" ]] || { echo 'Installed integration matrix consumer is missing' >&2; exit 1; }
 manifest="$gate_root/conformance/manifests/counter.json"
 trace="$gate_root/conformance/control-v1/counter.itf.json"
 spec="$mirrors_root/specs/Counter.tla"

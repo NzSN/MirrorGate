@@ -430,6 +430,70 @@ Json Session::status() {
   return client().request("session.status", {{"sessionId", session_id_}});
 }
 
+ControlClient& HostedRun::client() const {
+  auto owner=owner_.lock();
+  if(!owner || !owner->client) throw SdkError("HANDLE_INVALID","Hosted run owner is closed");
+  return *owner->client;
+}
+Json HostedRun::status() {
+  return client().request("agent.status",{{"sessionId",session_id_},{"runId",run_id_}}).at("run");
+}
+Json HostedRun::cancel(const std::string& reason) {
+  return client().request("agent.cancel",{{"sessionId",session_id_},{"runId",run_id_},{"reason",reason}}).at("run");
+}
+Json HostedRun::wait(std::chrono::milliseconds timeout) {
+  const auto deadline=std::chrono::steady_clock::now()+timeout;
+  while(true) {
+    auto result=status();
+    if(result.at("phase")=="finished") return result;
+    if(std::chrono::steady_clock::now()>=deadline) throw SdkError("DEADLINE_EXCEEDED","Hosted run wait deadline exceeded");
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+}
+HostedRun Session::start_agent(const std::string& profile_id, const Json& public_task, const Json* limits) {
+  Json args={{"sessionId",session_id_},{"profileId",profile_id},{"publicTask",public_task}};
+  if(limits) args["limits"]=*limits;
+  auto result=client().request("agent.start",args);
+  HostedRun run;run.owner_=owner_;run.session_id_=session_id_;run.run_id_=result.at("runId");return run;
+}
+Json Session::agent_status() {
+  return client().request("agent.status",{{"sessionId",session_id_}}).at("run");
+}
+Json Session::agent_status(const HostedRun& run) {
+  if(owner_.lock()!=run.owner_.lock() || session_id_!=run.session_id_)
+    throw SdkError("HANDLE_INVALID","Hosted run is not owned by this session");
+  return client().request("agent.status",{{"sessionId",session_id_},{"runId",run.run_id_}}).at("run");
+}
+Json Session::cancel_agent(const HostedRun& run, const std::string& reason) {
+  if(owner_.lock()!=run.owner_.lock() || session_id_!=run.session_id_)
+    throw SdkError("HANDLE_INVALID","Hosted run is not owned by this session");
+  return client().request("agent.cancel",{{"sessionId",session_id_},{"runId",run.run_id_},{"reason",reason}}).at("run");
+}
+void ControlClient::record_run(const std::string& session_id, const Json& run) {
+  validate_hosted_run(run);
+  const auto id=run.at("runId").get<std::string>();
+  if(!sessions_.count(session_id) || !runs_.count(session_id) || runs_.at(session_id)!=id)
+    throw SdkError("CONTROL_MALFORMED","Run belongs to an unknown session or run");
+  auto previous=run_states_.find(session_id);
+  if(previous!=run_states_.end()) {
+    const auto& old=previous->second;
+    const std::map<std::string,int> phases{{"starting",0},{"running",1},{"submitting",2},{"cleaning",3},{"finished",4}};
+    if(phases.at(old.at("phase"))>phases.at(run.at("phase")) || old.at("limits")!=run.at("limits") ||
+       old.at("progress").at("nextSeq")>run.at("progress").at("nextSeq") ||
+       old.at("progress").at("firstSeq")>run.at("progress").at("firstSeq") ||
+       (old.at("phase")=="finished" && old!=run))
+      throw SdkError("CONTROL_MALFORMED","Hosted run state regressed");
+    for(const auto* field:{"outcome","submission","error"})
+      if(old.contains(field) && (!run.contains(field) || old.at(field)!=run.at(field)))
+        throw SdkError("CONTROL_MALFORMED","Hosted run identity changed");
+    for(const auto& prior:old.at("progress").at("records"))
+      for(const auto& current:run.at("progress").at("records"))
+        if(prior.at("seq")==current.at("seq") && prior!=current)
+          throw SdkError("CONTROL_MALFORMED","Progress record changed");
+  }
+  run_states_[session_id]=run;
+}
+
 ControlClient::ControlClient(std::unique_ptr<Transport> transport,
                              std::chrono::milliseconds request_timeout)
     : transport_(std::move(transport)), request_timeout_(request_timeout),
@@ -441,23 +505,23 @@ ControlClient::ControlClient(std::unique_ptr<Transport> transport,
 std::unique_ptr<ControlClient> ControlClient::launch(
     const std::vector<std::string>& approved_argv,
     const std::vector<std::string>& required_capabilities,
-    std::chrono::milliseconds request_timeout) {
-  return from_transport(launch_stdio(approved_argv), required_capabilities, request_timeout);
+    std::chrono::milliseconds request_timeout, int control_version) {
+  return from_transport(launch_stdio(approved_argv), required_capabilities, request_timeout, control_version);
 }
 
 std::unique_ptr<ControlClient> ControlClient::connect(
     const std::string& unix_path,
     const std::vector<std::string>& required_capabilities,
-    std::chrono::milliseconds request_timeout) {
-  return from_transport(connect_unix(unix_path), required_capabilities, request_timeout);
+    std::chrono::milliseconds request_timeout, int control_version) {
+  return from_transport(connect_unix(unix_path), required_capabilities, request_timeout, control_version);
 }
 
 std::unique_ptr<ControlClient> ControlClient::from_transport(
     std::unique_ptr<Transport> transport,
     const std::vector<std::string>& required_capabilities,
-    std::chrono::milliseconds request_timeout) {
+    std::chrono::milliseconds request_timeout, int control_version) {
   std::unique_ptr<ControlClient> client(new ControlClient(std::move(transport), request_timeout));
-  try { client->handshake(required_capabilities); }
+  try { client->handshake(required_capabilities, control_version); }
   catch (...) { client->close(); throw; }
   return client;
 }
@@ -468,13 +532,20 @@ bool ControlClient::owns_process() const noexcept {
   return transport_ && transport_->owns_process();
 }
 
-void ControlClient::handshake(const std::vector<std::string>& required_capabilities) {
+void ControlClient::handshake(const std::vector<std::string>& capabilities, int control_version) {
+  if (control_version != 1 && control_version != 2)
+    throw SdkError("ARGUMENT_INVALID", "Only control versions 1 and 2 are supported");
+  control_version_ = control_version;
+  auto required_capabilities = capabilities;
+  if (control_version == 2 && std::find(required_capabilities.begin(), required_capabilities.end(),
+      "hosting.fresh-agent-v1") == required_capabilities.end())
+    required_capabilities.push_back("hosting.fresh-agent-v1");
   if (required_capabilities.size() > 64)
     throw SdkError("ARGUMENT_INVALID", "Required capabilities exceed the bounded set");
   std::set<std::string> unique(required_capabilities.begin(), required_capabilities.end());
   if (unique.size() != required_capabilities.size())
     throw SdkError("ARGUMENT_INVALID", "Duplicate required capability");
-  hello_ = request("hello", {{"controlVersions", Json::array({1})},
+  hello_ = request("hello", {{"controlVersions", Json::array({control_version_})},
                               {"requiredCapabilities", required_capabilities}});
   for (const auto& required : required_capabilities) {
     bool available = false;
@@ -504,17 +575,21 @@ Json ControlClient::request(const std::string& operation, const Json& arguments,
     throw SdkError("LIMIT", "Control request ID space exhausted");
   if (!arguments.is_object()) throw SdkError("ARGUMENT_INVALID", "Control arguments must be an object");
   const std::uint64_t request_id = next_request_id_++;
-  Json request_value = {{"v", 1}, {"kind", "request"}, {"id", request_id},
+  Json request_value = {{"v", operation == "hello" ? 1 : control_version_}, {"kind", "request"}, {"id", request_id},
                         {"op", operation}, {"args", arguments}};
-  validate_control_request(request_value);
+  if (control_version_ == 2) validate_control_v2_request(request_value);
+  else validate_control_request(request_value);
   const std::string encoded = encode_strict_json(request_value, kControlLimits);
   try { transport_->write_frame(encoded, kControlLimits.bytes); }
   catch (...) { close(); throw; }
-  return receive_for(request_id, operation, timeout.count() > 0 ? timeout : request_timeout_);
+  auto effective_timeout = timeout.count() > 0 ? timeout : request_timeout_;
+  if (operation == "agent.cancel") effective_timeout = std::max(effective_timeout, std::chrono::milliseconds(7000));
+  return receive_for(request_value, effective_timeout);
 }
 
-Json ControlClient::receive_for(std::uint64_t request_id, const std::string& operation,
-                                std::chrono::milliseconds timeout) {
+Json ControlClient::receive_for(const Json& request_value, std::chrono::milliseconds timeout) {
+  const auto request_id = require_safe_id(request_value, "id");
+  const auto operation = request_value.at("op").get<std::string>();
   try {
     const auto deadline = std::chrono::steady_clock::now() + timeout;
     while (true) {
@@ -527,17 +602,47 @@ Json ControlClient::receive_for(std::uint64_t request_id, const std::string& ope
       const std::string kind = require_string(message, "kind", 16);
       if (kind == "event") { accept_event(message); continue; }
       if (kind != "response") throw SdkError("CONTROL_MALFORMED", "Unexpected control envelope kind");
-      require_version_one(message);
+      if (message.at("v") != request_value.at("v"))
+        throw SdkError("CONTROL_MALFORMED", "Unexpected negotiated response version");
       if (require_safe_id(message, "id") != request_id)
         throw SdkError("CONTROL_MALFORMED", "Unsolicited or incorrectly correlated response");
       if (!message.contains("ok") || !message.at("ok").is_boolean())
         throw SdkError("CONTROL_MALFORMED", "Invalid response status");
       if (message.at("ok").get<bool>()) {
         require_exact_fields(message, {"v", "kind", "id", "ok", "result"});
-        validate_control_response_fixture(message, operation);
+        if (control_version_ == 2) {
+          std::string terminal;
+          if (operation == "operation.status") {
+            const auto& args = request_value.at("args");
+            const auto found = operations_.find(std::make_pair(
+                args.at("sessionId").get<std::string>(), require_safe_id(args, "operationId")));
+            if (found != operations_.end()) terminal = found->second;
+          }
+          validate_control_v2_response(message, request_value, terminal);
+        } else validate_control_response_fixture(message, operation);
+        if (operation == "agent.start") {
+          const auto sid = request_value.at("args").at("sessionId").get<std::string>();
+          const auto rid = message.at("result").at("runId").get<std::string>();
+          if (!sessions_.count(sid) || !runs_.emplace(sid, rid).second)
+            throw SdkError("CONTROL_MALFORMED", "Session accepted more than one run");
+        } else if (operation == "agent.status" || operation == "agent.cancel") {
+          const auto sid = request_value.at("args").at("sessionId").get<std::string>();
+          const auto& run = message.at("result").at("run");
+          if (!run.is_null()) {
+            if (!runs_.count(sid)) runs_[sid]=run.at("runId");
+            record_run(sid, run);
+          }
+          else if (runs_.count(sid)) throw SdkError("CONTROL_MALFORMED", "Accepted run disappeared");
+        }
         return message.at("result");
       }
       require_exact_fields(message, {"v", "kind", "id", "ok", "error"});
+      if (control_version_ == 2) {
+        validate_control_v2_response(message, request_value);
+        const auto& error = message.at("error");
+        throw ServerError(error.at("code"), error.at("stage"), error.at("message"),
+                          error.value("operationId", std::uint64_t(0)));
+      }
       throw decode_control_error(message.at("error"));
     }
   } catch (const ServerError&) {
@@ -552,9 +657,10 @@ Json ControlClient::receive_for(std::uint64_t request_id, const std::string& ope
 }
 
 void ControlClient::accept_event(const Json& message) {
-  validate_control_event_fixture(message);
+  if (control_version_ == 2) validate_control_v2_event(message);
+  else validate_control_event_fixture(message);
   require_exact_fields(message, {"v", "kind", "seq", "sessionId", "event", "data"});
-  require_version_one(message);
+  if (message.at("v") != control_version_) throw SdkError("CONTROL_MALFORMED", "Wrong event version");
   if (require_safe_id(message, "seq") != next_event_sequence_++)
     throw SdkError("CONTROL_MALFORMED", "Control event sequence gap");
   const std::string session_id = require_string(message, "sessionId", 32);
@@ -564,12 +670,14 @@ void ControlClient::accept_event(const Json& message) {
   const std::string name = require_string(message, "event", 32);
   if (!one_of(name, {"operation.finished", "authoring.output", "build.output",
                      "worker.started", "worker.ready", "worker.exited",
-                     "worker.closing", "session.closed"}))
+                     "worker.closing", "session.closed", "agent.updated", "agent.finished"}))
     throw SdkError("CONTROL_MALFORMED", "Unknown control event");
   if (!message.at("data").is_object())
     throw SdkError("CONTROL_MALFORMED", "Invalid control event data");
   const Json& data = message.at("data");
-  if (name == "operation.finished") {
+  if (name == "agent.updated" || name == "agent.finished") {
+    record_run(session_id, data.at("run"));
+  } else if (name == "operation.finished") {
     validate_operation_status(data);
     const auto operation_id = require_safe_id(data, "operationId");
     const auto operation = operations_.find(std::make_pair(session_id, operation_id));

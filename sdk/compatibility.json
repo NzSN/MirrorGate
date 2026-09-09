@@ -2,7 +2,7 @@
   "schema": "mirrorgate.sdk-compatibility/v1",
   "status": "experimental-development",
   "sdkVersion": "0.1.0",
-  "controlVersions": [1],
+  "controlVersions": [1, 2],
   "workerVersions": [1],
   "backend": "linux-bubblewrap-v1",
   "controller": {

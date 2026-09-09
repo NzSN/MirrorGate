@@ -1,5 +1,12 @@
 # Protocol artifacts
 
+Worker messages and trusted orchestration control use separate protocols.
+[Control v1](control-v1/README.md) covers preparation and workers;
+[control v2](control-v2/README.md) adds managed hosting and its policy/audit schemas.
+The [hosting contract](../docs/agent-hosting-control-v2.md) defines negotiation and
+lifecycle rules; [final validation](../docs/managed-workflow-validation.md) records
+shared codec, native client and actual runtime checks.
+
 The normative contract is [port protocol v1](../docs/protocol-v1.md). Schemas
 use JSON Schema 2020-12 and reject unknown fields. They describe structural
 constraints only: byte limits, Unicode scalars, duplicate JSON keys, semantic

@@ -109,6 +109,7 @@ class BackendSession:
     cleanup_result: CleanupResult | None = None
     prepare_done: threading.Event = field(default_factory=threading.Event)
     preparing: bool = False
+    prepare_attempted: bool = False
     closing: bool = False
     active_build_gate: GateSession | None = None
     active_build_process: SandboxProcess | None = None
@@ -119,6 +120,10 @@ class BackendSession:
     active_authoring_process: SandboxProcess | None = None
     authoring_starting: bool = False
     authoring_done: threading.Event = field(default_factory=threading.Event)
+    submission: dict[str, Any] | None = None
+    submitting: bool = False
+    host_cleanup_complete: bool = True
+    host_deadline: float | None = None
     source_lease: FrozenLease | None = None
     artifact_lease: FrozenLease | None = None
     prepared: PreparedBackend | None = None
@@ -300,6 +305,60 @@ class ControlBackend:
             reports.append(report)
         return tuple(reports)
 
+    def admit_agent(self, state: BackendSession, profile_id: str, task: Any,
+                    limits: Any = None):
+        """No allocation: bind runtime audit to this admitted source/mount policy."""
+        from .agent_policy import agent_limits, public_task
+        self._check_state(state)
+        with state.lock:
+            if (state.submission_kind != "source" or not state.authoring_enabled or state.sealed
+                    or state.preparing or state.submitting or state.authoring_starting
+                    or state.active_authoring_process is not None):
+                raise BackendError("STATE_INVALID", "hosting", "managed authoring is unavailable")
+        if not self._probe_backend()[0]:
+            raise BackendError("CAPABILITY_UNAVAILABLE", "hosting", "restricted authoring backend is unavailable")
+        try:
+            profile = self.catalog.agent_profile(state.policy.id, profile_id)
+        except AdmissionError as exc:
+            raise BackendError("POLICY_DENIED", "hosting", "agent profile is not approved") from exc
+        exposed = [state.input_path.resolve(), *(Path(mount.source).resolve() for mount in state.runtime.runtime_mounts)]
+        private = [profile.credential_file.resolve(), profile.model_catalog.resolve(), profile.audit_receipt.resolve(),
+                   self._owned.resolve(), self._endpoint_root.resolve(), Path("/tmp")]
+        if any(path == root or root in path.parents for root in exposed for path in private):
+            raise BackendError("POLICY_DENIED", "hosting", "authoring mounts overlap private host resources")
+        try:
+            task = public_task(task)
+        except AdmissionError as exc:
+            raise BackendError("ARGUMENT_INVALID", "hosting", "public task is invalid") from exc
+        try:
+            effective = agent_limits({} if limits is None else limits, profile.limits, partial=True)
+        except AdmissionError as exc:
+            raise BackendError("LIMIT_EXCEEDED", "hosting", "agent limits exceed operator bounds") from exc
+        try:
+            return profile.admit(task, effective)
+        except (AdmissionError, OSError, ValueError, KeyError, TypeError) as exc:
+            raise BackendError("AUDIT_UNAVAILABLE", "hosting", "agent runtime audit or credentials are unavailable") from exc
+
+    def hosting_capability_reports(self) -> tuple[dict[str, Any], ...]:
+        """V2-only discovery. Each run still rechecks audit identity and freshness."""
+        available = False
+        if self._probe_backend()[0]:
+            for policy in self.catalog._policies.values():
+                if not policy.tools or not policy.build_plans:
+                    continue
+                for profile_id in policy.agent_profile_ids:
+                    try:
+                        profile = self.catalog.agent_profile(policy.id, profile_id)
+                        profile.admit({"instructions": "", "files": []})
+                        available = True
+                        break
+                    except (AdmissionError, OSError, ValueError, KeyError, TypeError):
+                        continue
+        return tuple({"id": capability, "available": available,
+                      "enforcedScope": "session" if available else "none", "limits": {},
+                      **({} if available else {"reason": "AUDIT_UNAVAILABLE"})}
+                     for capability in ("hosting.fresh-agent-v1", "hosting.codex-v1"))
+
     def open_session(self, *, owner: BackendOwner, policy_id: str, submission: dict[str, Any],
                      runtime: str, manifest_bytes: bytes,
                      tightened_limits: dict[str, int] | None = None,
@@ -455,12 +514,12 @@ class ControlBackend:
                                                  runtime_mounts=state.runtime.runtime_mounts,
                                                  limits=self._sandbox_limits(state, execution=False)))
                 with state.lock:
-                    if state.closing or state.cleanup_event.is_set():
+                    if state.sealed or state.closing or state.cleanup_event.is_set():
                         raise BackendError("CANCELLED", "authoring", "authoring admission was cancelled")
                     state.active_authoring_gate = gate
                 process = gate.start(ToolRequest(argv, cwd))
                 with state.lock:
-                    if state.closing or state.cleanup_event.is_set():
+                    if state.sealed or state.closing or state.cleanup_event.is_set():
                         process.cancel()
                         raise BackendError("CANCELLED", "authoring", "authoring launch was cancelled")
                     state.active_authoring_process = process
@@ -497,7 +556,10 @@ class ControlBackend:
                                      kwargs={"reason": "client-failure", "cancel_event": threading.Event()},
                                      daemon=True, name="mirrorgate-late-authoring-cleanup").start()
 
-    def _stop_authoring(self, state: BackendSession) -> None:
+    def _stop_authoring(self, state: BackendSession, *, deadline: float | None = None) -> None:
+        deadline = time.monotonic() + self.teardown_timeout_ms / 1000 if deadline is None else deadline
+        if state.cleanup_deadline is not None:
+            deadline = min(deadline, state.cleanup_deadline)
         with state.lock:
             state.sealed = True
             process = state.active_authoring_process
@@ -505,20 +567,68 @@ class ControlBackend:
         if process is not None and process.returncode is None:
             process.cancel()
             try:
-                process.wait(timeout=self.teardown_timeout_ms / 1000)
+                process.wait(timeout=max(0, deadline - time.monotonic()))
             except TimeoutError as exc:
                 raise BackendError("CLEANUP_FAILED", "prepare", "authoring writer did not terminate") from exc
         if gate is not None:
-            gate.close()
+            gate.close(timeout=max(0, deadline - time.monotonic()))
+        if not state.authoring_done.wait(max(0, deadline - time.monotonic())):
+            raise BackendError("CLEANUP_FAILED", "prepare", "authoring admission did not quiesce")
+
+    def submit_source(self, state: BackendSession, *, cancel_event: threading.Event) -> dict[str, Any]:
+        """Revoke writers and commit one owner-bound lease; no build or worker launch."""
+        self._check_state(state)
+        with state.lock:
+            if state.submission is not None:
+                return dict(state.submission)
+            if state.sealed or state.submitting or state.submission_kind != "source" or not state.authoring_enabled:
+                raise BackendError("STATE_INVALID", "authoring", "source submission is unavailable")
+            state.submitting = True
+            state.sealed = True
+            state.prepare_done.clear()  # session cleanup also waits for provisional snapshots
+        provisional = None
+        try:
+            self._stop_authoring(state)
+            if cancel_event.is_set() or state.cleanup_event.is_set():
+                raise BackendError("CANCELLED", "authoring", "source submission was cancelled")
+            provisional = self._store.freeze(state.owner, state.input_path,
+                max_files=state.limits.snapshot_files, max_bytes=state.limits.snapshot_bytes)
+            with state.lock:
+                effective_deadline = min(state.deadline, state.host_deadline) if state.host_deadline is not None else state.deadline
+                if time.monotonic() >= effective_deadline:
+                    raise BackendError("DEADLINE_EXCEEDED", "authoring", "source submission exceeded its deadline")
+                if state.closing or cancel_event.is_set() or state.cleanup_event.is_set():
+                    raise BackendError("CANCELLED", "authoring", "source submission was cancelled")
+                submission = {"submissionId": secrets.token_hex(16), "sourceHash": provisional.digest,
+                              "sourceRevision": 1}
+                state.source_lease = provisional
+                state.submission = submission
+                provisional = None
+                return dict(submission)
+        except (AdmissionError, OSError) as exc:
+            raise BackendError("PREPARATION_FAILED", "authoring", "source freeze failed") from exc
+        finally:
+            if provisional is not None:
+                provisional.close(state.owner)
+            with state.lock:
+                state.submitting = False
+                state.prepare_done.set()
+                late_cleanup = state.cleanup_event.is_set() and not state.closed
+            if late_cleanup:
+                threading.Thread(target=self.cleanup_session, args=(state,),
+                                 kwargs={"reason": "client-failure", "cancel_event": threading.Event()},
+                                 daemon=True, name="mirrorgate-late-submit-cleanup").start()
 
     def prepare(self, state: BackendSession, *, cancel_event: threading.Event,
                 emit_output: OutputCallback) -> PreparedBackend:
         self._check_state(state)
         with state.lock:
-            if state.sealed or state.prepared is not None or state.preparing:
+            if ((state.sealed and state.submission is None) or state.prepared is not None
+                    or state.preparing or state.prepare_attempted or state.submitting or not state.host_cleanup_complete):
                 raise BackendError("STATE_INVALID", "prepare", "preparation is permitted once")
             state.sealed = True
             state.preparing = True
+            state.prepare_attempted = True
             state.prepare_done.clear()
         try:
             self._stop_authoring(state)
@@ -535,9 +645,11 @@ class ControlBackend:
                     raise BackendError("CANCELLED", "prepare", "preparation was cancelled")
                 source_hash = None
             else:
-                source = self._store.freeze(state.owner, state.input_path,
-                                            max_files=state.limits.snapshot_files,
-                                            max_bytes=state.limits.snapshot_bytes)
+                source = state.source_lease
+                if source is None:
+                    source = self._store.freeze(state.owner, state.input_path,
+                                                max_files=state.limits.snapshot_files,
+                                                max_bytes=state.limits.snapshot_bytes)
                 with state.lock:
                     cancelled = state.closing or cancel_event.is_set() or state.cleanup_event.is_set()
                     if not cancelled:

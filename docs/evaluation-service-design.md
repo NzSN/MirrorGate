@@ -1,15 +1,20 @@
 # Optional MBT evaluation service and proxy
 
-Status: accepted design, 2026-09-09; not implemented. This service wraps a reusable
+Status: local HTTP v1 implementation, 2026-09-09; real transport and adversarial
+service tests are separate from complete Gate-backed consumer acceptance. This service wraps a reusable
 trusted MBT harness and is distinct from both Gate's hosting tool and its worker
 proxy. It does not extend frozen control v1, worker v1, or the Mirrors model
-protocol. No service endpoint, transport, or wire version is advertised yet.
+protocol. The [local service contract](evaluation-service-contract-v1.md) freezes
+loopback HTTP, configured caller authentication, closed records and bounded
+retention. Remote HTTP/TLS deployment is not implemented.
 
 ## Purpose and ownership
 
 An application may keep its MBT suite in source control and invoke the same suite
 from a test file, CLI, or proxy-accessible evaluator. The service wrapper lives in
-the optional trusted integration, proposed under `integrations/mirrorecma/service/`.
+MirrorGate-owned trusted evaluation integration, under
+`integrations/mirrorecma/service/`. Gate also owns the supported local evaluation
+workflow beneath it; only deploying this service transport is optional.
 MirrorECMA continues to test supplied implementations through generic factories
 and bindings. Application suites and private evaluation/disclosure policy stay
 with the trusted evaluator. Gate's core owns isolation and resource lifecycle.
@@ -29,7 +34,7 @@ Gate session, or worker handle.
 
 Use one reusable suite module for source-code tests and service handlers; the
 entry points select an implementation provider and call that module. See the
-[MirrorECMA harness design](../../MirrorECMA/docs/mbt-harness-design.md) for an
+[MirrorECMA harness design](https://github.com/NzSN/MirrorECMA/blob/main/docs/mbt-harness-design.md) for an
 illustrative layout and the existing generic negotiated factory seam.
 
 A suite may live beside implementation source in a repository. The trusted
@@ -41,18 +46,19 @@ the private evaluator or the implementation's model conformance.
 
 ## Service request and run semantics
 
-The proposed logical interface is:
+The supplied service proxy exposes:
 
 | Operation | Meaning |
 | --- | --- |
-| `startEvaluation(suiteId, implementationRef)` | Resolve authorized immutable suite/implementation identities and accept a bounded evaluation run |
-| `getEvaluation(runId)` | Return approved progress or a retained terminal outcome for that caller's run |
-| `cancelEvaluation(runId)` | Request cancellation; report terminal cleanup only once actually settled |
+| `start({startKey, suiteRef, implementationRef})` | Resolve authorized immutable suite/implementation identities and accept a bounded evaluation run |
+| `get({runId})` or `get({startKey})` | Return approved progress or a retained terminal outcome for that caller's run |
+| `cancel(runId)` | Request cancellation; report terminal cleanup only once actually settled |
 
-These are design labels, not existing tool or wire names. AH12 must specify the
-transport, versioned closed schemas, numeric bounds, admission/authentication,
-caller-scoped references, correlation, duplicate-start handling, failure codes,
-run retention, and disconnect policy before service code is implemented.
+The [versioned contract](evaluation-service-contract-v1.md) specifies these
+operations, transport, closed schemas, numeric bounds, authentication, caller
+ownership, duplicate-start keys, failure codes, retention, and disconnect policy.
+The start key is retained before sending; a lost reply is recovered against the
+same service epoch. Expired keys remain tombstones and cannot launch another run.
 
 Requests select approved suites and implementation references; they do not carry
 arbitrary executable harness code, host file paths, untrusted remote endpoints,
@@ -72,13 +78,13 @@ create durable restart/reconnect support in the Gate controller.
 
 1. The service resolves the approved suite and implementation and creates its
    evaluation context with a deadline and disclosure policy.
-2. The external integration supplies a deferred implementation factory to the
+2. Gate's trusted evaluation integration supplies a deferred implementation factory to the
    suite's ordinary MirrorECMA runner, connected to the existing Mirrors server.
 3. Only after the required model match does that factory authorize/acquire the
    Gate worker and construct the trusted generated binding over its proxy.
 4. MirrorECMA executes the same suite semantics as the local entry point. The
    service stores bounded progress and projects permitted model results.
-5. The external integration disposes/releases resources through Gate, including
+5. Gate's trusted evaluation integration disposes/releases resources through the supervisor, including
    failures before factory invocation. Final evidence separates the primary
    model failure from cleanup failure or unconfirmed cleanup.
 
@@ -90,11 +96,17 @@ specified preparation path. It must not adopt another connection's live session
 merely because a caller supplies its ID. Cross-process lease handoff beyond the
 existing contract requires explicit versioned work.
 
-The service can expose remote evaluation while using local Gate control and a
-separate Mirrors model connection internally. It does not make Gate control v1
+The current service exposes loopback evaluation while using local Gate control
+and a separate Mirrors model connection internally. Future remote deployment
+requires a separately specified authenticated transport profile. It does not make Gate control v1
 remote, change worker RPC, or require MirrorECMA to implement a network server.
 The implementer receives only public port inputs/results; private model-facing
 bindings, full negotiation authority, and diagnostic reports remain trusted.
+
+The service must call the same [Gate-owned local workflow](managed-workflow-design.md)
+and use its receipt/disclosure projection. It adds transport, authorized run
+references and retention, not another MBT or cleanup implementation. Source tests
+and local evaluation remain available without deploying the service.
 
 ## Acceptance and delivery
 
@@ -118,4 +130,37 @@ support, verify:
   authoring/build/execution isolation and from hosted CI/publication claims.
 
 The [hosting task ledger](agent-hosting-tasks.md) tracks prerequisites and evidence.
-No evaluation-service acceptance or production deployment is claimed here.
+Production deployment and publication are not claimed here. Service transport
+tests do not replace Gate isolation or model-checking evidence.
+
+## Local validation evidence
+
+The local v1 implementation has 67 focused codec/HTTP tests, including duplicate
+JSON keys, unsafe inputs, caller isolation, lost-start recovery, tombstones,
+capacity/rate limits, cancellation, disconnect retention, unconfirmed cleanup,
+shutdown and a real incomplete-body timeout. Draft 2020-12 validation checks the
+shared positive corpus; the public TypeScript consumer checks declarations.
+
+The optional `--service` mode of
+`integrations/mirrorecma/scripts/installed-workflow.mjs` validates installed package
+exports and the HTTP proxy against the same compiled Counter suite used by source
+tests. With real Gate workers and Mirrors, correct local/service implementations
+both pass (one trace, two accepted steps), faulty implementations both mismatch,
+and R3 reports confirmed cleanup. The setup's author is explicitly synthetic;
+this service gate does not claim a fresh actual Codex authoring audit. It uses
+approved prebuilt implementations and adds no application lifecycle helper.
+
+Commands, from `integrations/mirrorecma`, with the repository's pinned toolchain
+and prepared Mirrors/Apalache environment:
+
+```bash
+NODE_OPTIONS=--experimental-vm-modules ./node_modules/.bin/jest --runInBand \
+  --runTestsByPath test/service.test.ts test/service-schema.test.ts
+python3 service/check-schema.py
+./node_modules/.bin/tsc --noEmit --strict --target ES2022 --module Node16 \
+  --moduleResolution Node16 --types node test/service-consumer.mts
+node scripts/installed-workflow.mjs --service
+```
+
+Real HTTP and Bubblewrap checks require loopback and namespace access. A failure
+of an outer sandbox to permit those operations is not a successful service gate.

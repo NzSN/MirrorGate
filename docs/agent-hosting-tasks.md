@@ -1,57 +1,66 @@
 # Managed agent hosting — implementation tasks
 
-Status: consolidated task plan and prerequisite drafts, 2026-09-09. The controlling
-[agent-hosting design](agent-hosting-design.md) is accepted; managed hosting is
-not implemented. Baseline: MirrorGate `34ed854`. This ledger does not mark
-experiment helpers or design review as delivered runtime functionality.
+Status: destination-integrated and locally validated, 2026-09-09. The work began
+from MirrorGate `7dc16e7` with the existing design edits preserved. Destination,
+core/live, installed-package and cross-client gates passed. A real outside Codex
+coordinator registered the installed MCP adapter and drove a real fresh Codex
+implementer through submission, MBT and confirmed cleanup.
+[Final validation](managed-workflow-validation.md) records authoritative commands,
+versions and results. Local completion does not imply publication or hosted CI.
+
+The [managed workflow](managed-workflow-design.md) places R1 agent hosting,
+R2 sandbox/artifacts and R3 trusted MBT integration inside Gate. The external
+`mirrorgate-mirrorecma` package now supplies the local workflow and receipts;
+MirrorECMA 2 removes its Gate-specific core surface. The optional local HTTP
+service invokes that same workflow. Mirrors semantics/protocols are unchanged.
 
 ## Assignment and execution scope
 
-All AH implementation tasks below are assigned to `specification_implementer`.
-The coordinator owns dependency ordering, integration, independent review,
-final verification, and this ledger. An assignment is not evidence of execution.
+The implementation was delegated to named `specification_implementer` agents:
 
-For this planning turn, the named agent role was requested but the session's
-launcher returned `unknown agent_type 'specification_implementer'`. A `worker`
-task named `specification_implementer` therefore performed the planning review
-using the local role's instructions. Its completed assignment covered task
-decomposition, ownership, prerequisite gaps, and edits to this ledger. It had
-no runtime-edit, commit, push, publication, or further-delegation assignment.
+| Assignment | Implemented responsibility |
+| --- | --- |
+| `control_contract` | AH1.2/AH2.1 v2 contract/codecs, AH5.2 controller integration and AH12 service/proxy |
+| `host_backend` | AH2.2 profiles/admission, AH3 runtime/audit, AH4 broker and AH5.1 committed source leases |
+| `mbt_suite` | AH8.3 generic suite, AH6 Node SDK and AH11 hosting-tool implementation |
+| `cpp_hosting` | AH7 native C++ hosting, AH8.5 core cutover and independent adversarial review |
+| `mbt_integration` | AH8.2/AH8.6/AH8.7 external workflow, receipts, migration and installed Counter consumer |
+| Coordinator | Integration, independent negative-path review, final destination checks and evidence |
 
-The latest dispatch successfully instantiated the named `specification_implementer`
-role for `hosting_contract_decisions` (AH1.1) and `mbt_migration_plan` (AH8.1).
-Their reviewed documentation drafts are linked below. The earlier worker fallback
-is historical, not the role used for this dispatch. Neither assignment authorized
-runtime implementation, repository commits, or modifications to Mirrors.
+Earlier planning used a fallback worker when the named role was unavailable;
+later AH1.1/AH8.1 and runtime dispatches used the named role successfully. That
+history is not a current launcher limitation. Runtime edits were authorized by
+the user; commits, push and publication are outside this implementation dispatch.
 
-Implementation tasks remain queued behind their dependencies. Their ownership
-and acceptance criteria are defined here for subsequent dispatch. Each dispatch
-must name the task IDs and owned paths; do not infer permission to implement
-other tasks from their appearance in this ledger. Agents are not alone in the
-checkout and must preserve other contributors' edits. Shared-file ownership
-must be handed off explicitly before another assignment edits it.
+Code is integrated in the destination repositories with verified content parity.
+Gate's final full gate, MirrorECMA core/live checks, integration tests, Mirrors
+gates and the central interop matrix passed. The installed MCP protocol harness
+and actual outside-Codex framework both drove real implementers successfully.
+Synthetic-host fixtures remain separate reproducible race/fault tests. Delegates
+preserved existing edits and handed shared files over explicitly; the coordinator
+independently reviewed negative paths and records final evidence.
 
 ## Tasks and dependencies
 
 Every row has the same implementation assignee: `specification_implementer`.
 The owner column identifies the task's exclusive responsibility during dispatch.
-New filenames are proposed locations; AH1 must settle the versioned contract
-layout before consumers implement it.
+The owned paths now contain the implementation. Detailed acceptance requirements
+below remain the reference for verification and future changes.
 
 | ID | Task / owner | Depends on | Owned paths | Status |
 | --- | --- | --- | --- | --- |
-| AH1 | Freeze the hosting control and policy specification | Planning review | New hosting control/policy docs under `docs/`; proposed contract and schema directories under `protocol/`; proposed shared fixtures under `conformance/`; scoped compatibility documentation | AH1.1 draft reviewed; AH1.2 contract/fixtures queued |
-| AH2 | Strict codecs, operator profiles, and capability admission | AH1 | `supervisor/mirrorgate/control_protocol.py`, `control_policy.py`, version-specific codec/policy modules, focused protocol/policy tests and fixtures | Assigned; queued |
-| AH3 | Supported Codex runtime and credential lifecycle | AH1, AH2 | New `supervisor/mirrorgate/agent_runtime.py` and runtime support files; focused runtime/configuration/capability tests | Assigned; queued |
-| AH4 | Session-bound authoring broker and agent tools | AH1, AH2 | New `supervisor/mirrorgate/authoring_broker.py` and MCP transport files; focused broker/dispatcher tests | Assigned; queued |
-| AH5 | Gate-owned hosting lifecycle, submission, and cleanup | AH2, AH3, AH4 | `orchestration.py`, `control_server.py`, `preparation.py`, scoped `cli.py`/`sandbox.py`/`artifacts.py` changes under `supervisor/mirrorgate/`; hosting lifecycle/race tests | Assigned; queued |
-| AH6 | Native Node hosting interface and package consumption | AH1, AH5 | `sdk/node/control.mjs`, `control.d.mts`, related public package exports, Node hosting/consumer tests | Assigned; queued |
-| AH7 | Native C++ hosting interface | AH1, AH5 | `sdk/cpp/`, `tests/cpp/`, scoped `scripts/test-control-cpp.sh` changes | Assigned; queued |
-| AH8 | External MBT integration and MirrorECMA decoupling migration | Runtime integration: AH5, AH6, AH11 | `integrations/mirrorecma/` public integration and tests; explicit handoff for MirrorECMA `src/sandbox.ts`, `src/sandbox-model.ts`, root exports/package metadata, affected consumer tests and Counter experiment migration | AH8.1 plan reviewed; runtime packages queued |
-| AH9 | Shared acceptance, adversarial integration, and gate wiring | AH5, AH6, AH7, AH8, AH11 | Hosting acceptance fixtures/tests, `scripts/test.sh`, scoped package/declaration gates; coordination with AH1 fixture owner | Assigned; queued |
-| AH10 | Destination verification and support documentation | AH9, AH11 | Hosting task/evidence docs, `docs/compatibility.md`, `sdk/compatibility.json`, usage/design/index status, root README | Assigned; queued; coordinator verifies independently |
-| AH11 | Standard hosting-tool adapter for an outside coordinating agent | AH1, AH5, AH6 | Proposed `integrations/agent-host/` Gate-owned module, tool schemas, registration/configuration examples, packaging and dispatch tests; explicit handoff for shared package metadata | Assigned; queued |
-| AH12 | Optional evaluation-service contract, proxy, and shared-suite acceptance | AH8 | `docs/evaluation-service-design.md`; proposed `integrations/mirrorecma/service/` and service/client fixtures/tests; explicit handoff for integration package metadata | Assigned; queued; separate optional delivery |
+| AH1 | Freeze the hosting control and policy specification | Planning review | Hosting control/policy docs under `docs/`; `protocol/control-v2/`; shared fixtures under `conformance/control-v2/`; scoped compatibility documentation | Frozen control/policy v2 contracts, schemas and shared vectors implemented |
+| AH2 | Strict codecs, operator profiles, and capability admission | AH1 | `supervisor/mirrorgate/control_protocol.py`, `control_policy.py`, version-specific codec/policy modules, focused protocol/policy tests and fixtures | Strict v1/v2 codecs, closed profiles and fresh runtime admission implemented |
+| AH3 | Supported Codex runtime and credential lifecycle | AH1, AH2 | New `supervisor/mirrorgate/agent_runtime.py` and runtime support files; focused runtime/configuration/capability tests | Codex 0.153.4 runtime/audit and descendant cleanup exercised locally |
+| AH4 | Session-bound authoring broker and agent tools | AH1, AH2 | New `supervisor/mirrorgate/authoring_broker.py` and MCP transport files; focused broker/dispatcher tests | Session broker and restricted MCP tools implemented and tested |
+| AH5 | Gate-owned hosting lifecycle, submission, and cleanup | AH2, AH3, AH4 | `orchestration.py`, `control_server.py`, `preparation.py`, scoped `cli.py`/`sandbox.py`/`artifacts.py` changes under `supervisor/mirrorgate/`; hosting lifecycle/race tests | Run/source/cleanup lifecycle implemented; local race and real backend gates pass |
+| AH6 | Native Node hosting interface and package consumption | AH1, AH5 | `sdk/node/control.mjs`, `control.d.mts`, related public package exports, Node hosting/consumer tests | Node v2 SDK, declarations and installed consumers tested locally |
+| AH7 | Native C++ hosting interface | AH1, AH5 | `sdk/cpp/`, `tests/cpp/`, scoped `scripts/test-control-cpp.sh` changes | C++ v2 client/shared vectors and real-controller owned/attached tests pass locally |
+| AH8 | Gate-owned local MBT workflow and MirrorECMA decoupling migration | Runtime integration: AH5, AH6, AH11 | `integrations/mirrorecma/` public integration and tests; explicit handoff for MirrorECMA `src/sandbox.ts`, `src/sandbox-model.ts`, root exports/package metadata, affected consumer tests and Counter experiment migration | External workflow, core cutover and installed Counter/service consumer implemented locally |
+| AH9 | Shared acceptance, adversarial integration, and gate wiring | AH5, AH6, AH7, AH8, AH11 | Hosting acceptance fixtures/tests, `scripts/test.sh`, scoped package/declaration gates; coordination with AH1 fixture owner | Destination/native/isolation/core/live/interop and actual-framework acceptance passed |
+| AH10 | Destination verification and support documentation | AH9, AH11 | Hosting task/evidence docs, `docs/compatibility.md`, `sdk/compatibility.json`, usage/design/index status, root README | Destination verification complete; authoritative validation report records evidence |
+| AH11 | Standard hosting-tool adapter for an outside coordinating agent | AH1, AH5, AH6 | `integrations/agent-host/` Gate-owned module, tool schemas, registration/configuration examples, packaging and dispatch tests; explicit handoff for shared package metadata | Installed adapter and actual outside-Codex MCP dispatch passed |
+| AH12 | Optional evaluation-service contract, proxy, and shared-suite acceptance | AH8 | `docs/evaluation-service-design.md`; `integrations/mirrorecma/service/` and service/client fixtures/tests; explicit handoff for integration package metadata | Loopback HTTP v1 service/proxy and shared-suite acceptance implemented locally |
 
 AH3 and AH4 may be dispatched independently after the same AH1/AH2 contract
 is fixed. AH6 and AH7 may proceed independently against the integrated AH5
@@ -73,10 +82,10 @@ work complete while AH12 remains pending, or infer service support from AH10.
 ## Dispatchable work packages
 
 The following packages refine AH1–AH12 without replacing those stable IDs.
-All are assigned to `specification_implementer`. AH1.1 and AH8.1 are completed
-planning drafts; all code, schema/fixture, runtime validation, and service work
-below remains queued. A parent task is not complete merely because its planning
-draft exists. Mirrors source, protocol, and compiler are unchanged by this plan.
+All were assigned to `specification_implementer`. AH1.1/AH8.1 remain historical
+planning drafts; current code and evidence are recorded below. Acceptance status
+does not follow from a planning document alone. Mirrors source, protocol and
+compiler are unchanged by this work.
 
 | Package | Prerequisite / ownership handoff | Deliverable and acceptance |
 | --- | --- | --- |
@@ -94,20 +103,22 @@ draft exists. Mirrors source, protocol, and compiler are unchanged by this plan.
 | AH7.1 | AH1.2 and AH5 | Equivalent C++ public interface, shared vector consumption and real-controller owned/attached tests; no Node orchestrator required |
 | AH11.1 | AH6.1 | Shipped coordinating-agent hosting adapter implementing the frozen tool contract through public Gate SDK; approved task/run references and disclosure checks |
 | AH11.2 | AH11.1 | Actual outside-agent dispatch and installed-package registration evidence, including lost replies, foreign references, cancellation and owner-connection handoff |
-| AH8.1 | Existing generic factory/source/package audit; documentation only | [MirrorECMA migration work plan](../../MirrorECMA/docs/mbt-integration-tasks.md): extraction/exports, generic seam, reusable suite and regression boundaries; reviewed planning only |
-| AH8.2 | AH8.1; stable external integration contract | Extract Gate-aware composition and define tested package/export compatibility; exact ownership and ordering in the companion plan, no managed-author option in MirrorECMA |
+| AH8.1 | Existing generic factory/source/package audit; documentation only | [MirrorECMA migration work plan](https://github.com/NzSN/MirrorECMA/blob/main/docs/mbt-integration-tasks.md): extraction/exports, generic seam, reusable suite and regression boundaries; reviewed planning only |
+| AH8.2 | AH8.1; stable Gate-owned integration contract | Extract Gate-aware composition and define tested package/export compatibility; exact ownership and ordering in the companion plan, no managed-author option in MirrorECMA |
 | AH8.3 | AH8.1; generic factory/binding available | One reusable approved suite with source-test/CLI wrappers and local/proxy provider cases; no dependence on hosting or service delivery for local source tests |
-| AH8.4 | AH5, AH6, AH11, AH8.2–AH8.3 | Coordinator-to-Gate fresh-author experiment and external evaluation integration against an existing Mirrors server; source/artifact identity and required-match-before-worker-launch |
-| AH8.5 | AH8.2–AH8.4 | Core dependency/export/consumer audit, unchanged generic MBT behavior, local/proxy result equivalence and compatibility/deprecation evidence |
+| AH8.4 | AH5, AH6, AH11, AH8.2–AH8.3 | Coordinator-to-Gate fresh-author experiment and Gate-owned evaluation integration against an existing Mirrors server; source/artifact identity and required-match-before-worker-launch |
+| AH8.6 | AH5, AH6, AH8.2–AH8.3 | Supported Gate-owned local workflow/provider and aggregate receipt; one owner from hosting/prepared source to generic MBT and cleanup, with private/public projections and partial-failure tests |
+| AH8.7 | AH8.6 and AH11 | Installed-package Counter consumer supplies only approved task/configuration/suite; no custom host/broker/credential/process/cleanup scripts or per-run library compilation/npm packing |
+| AH8.5 | AH8.2–AH8.4 and AH8.7 | Core dependency/export/consumer audit, unchanged generic MBT behavior, local/proxy result equivalence and compatibility/deprecation evidence |
 | AH9.1 | AH2–AH8 and AH11 | Integrated adversarial/public-interface acceptance, real author/build/worker isolation, preserved existing gates, native-client parity and bounded cleanup |
 | AH10.1 | AH9.1 | Coordinator-independent destination review, exact gate exits/versions, compatible package/usage docs and explicit remaining service scope; no publication inferred |
 | AH12.1 | AH8 suite/integration contract; planning can precede code | Freeze separate evaluation-service transport/schema, authorized suite/artifact references, caller/run identity, duplicate-start/query, bounds, retention/disconnect and cleanup rules |
-| AH12.2 | AH12.1 and AH8 reusable suite | Optional trusted service resolving approved immutable suites/implementations and invoking the same harness; preserve Gate owner connection and private result projection |
+| AH12.2 | AH12.1, AH8.3 and AH8.6 | Optional trusted service resolving approved immutable suites/implementations and invoking the same harness; preserve Gate owner connection and private result projection |
 | AH12.3 | AH12.2 | Proxy client plus configuration/registration examples; start/get/cancel, malformed/cross-caller references, uncertain replies and disconnect behavior |
 | AH12.4 | AH12.2–AH12.3 | Fixed-input source-test/CLI/service equivalence, correct/faulty local and real Gate-backed runs, private-suite integrity and cleanup; record service-specific support separately |
 
 Host implementation order is AH1.2 -> AH2 -> AH3/AH4/AH5.1 -> AH5.2 ->
-AH6/AH7 -> AH11 -> AH8.4/AH8.5 -> AH9/AH10. The reviewed AH8 plan and
+AH6/AH7 -> AH11 -> AH8.4/AH8.6/AH8.7 -> AH8.5 -> AH9/AH10. The reviewed AH8 plan and
 generic suite work need not wait for hosting; optional AH12 service delivery
 must not become a dependency of local source tests or MirrorECMA's core.
 
@@ -118,6 +129,19 @@ work and scratch files, and report source edits versus destination integration.
 No task includes committing, pushing, credential acquisition, hosted deployment,
 or unrelated Mirrors changes. Missing runtime/model access is a reported gate
 limitation, not permission to weaken or claim the gate.
+
+## R1–R3 task ownership
+
+| Requirement | Owning tasks | Exit evidence |
+| --- | --- | --- |
+| R1: private host/config directories, credentials, broker, fresh launch, deadlines and teardown | AH2.2, AH3.1–AH3.2, AH4, AH5.2, AH11 | Actual supported-runtime audit and fresh author; partial-start/deadline/EOF cleanup removes temporary credentials and owned host resources |
+| R2: workspace isolation, source/artifact freezing, restricted build/worker execution and cleanup | AH5.1–AH5.2 with existing supervisor/backend | Immutable lease reuse, writer quiescence, no unauthorized worker launch, real private-canary checks, and accurate cleanup receipts |
+| R3: connect the submission to MBT, preserve owner, combine evaluation and cleanup evidence | AH8.2, AH8.6, AH8.7 and AH9/AH10 | Supported installed Gate workflow supplies a deferred factory to generic MBT; correct/faulty Counter, pre-factory failure cleanup, and trusted/public result projection |
+
+The application retains Counter/public requirements, approved models and suite
+revision, replay choices and disclosure policy. Development packaging belongs
+to Gate's release/setup tooling, not the per-run application. AH12 wraps R3's
+local implementation; it must not duplicate it or block local source tests.
 
 ## AH1 — Contract decisions before implementation
 
@@ -164,7 +188,7 @@ Resolve these questions once in the shared specification:
 - How the coordinator/Gate-native caller supplies a bounded approved public brief
   and files directly to Gate, rejects generated-port collisions, and keeps private
   model/binding data out of authoring. No MirrorECMA managed-author variant is
-  permitted. Specify the external integration's generic implementation factory,
+  permitted. Specify the Gate-owned integration's generic implementation factory,
   matched-admission composition, and same-owner Gate lifecycle while MirrorECMA
   uses its independent existing Mirrors transport and generic MBT interface.
 - What the standard outside-agent hosting tool accepts and discloses. Define
@@ -184,7 +208,8 @@ Resolve these questions once in the shared specification:
 - How adapter startup checks hosting capabilities before allocation, and what
   installed-package and actual outside-agent tool-dispatch evidence establishes
   support. Stdio MCP backed by the public Node SDK is the intended first adapter
-  transport, subject to this contract; no such CLI or tool API exists today.
+  transport, now implemented by `mirrorgate/hosting-tool` and its CLI. Actual
+  outside-agent MCP acceptance remains separate from installed transport tests.
 
 Exit evidence: one authoritative specification and machine-readable contract
 with positive/negative examples, a state/race table, numeric bounds, a migration
@@ -265,8 +290,9 @@ workers do not count as two native hosting clients.
 
 **AH8:** Keep MirrorECMA's semantic API limited to MBT against caller-supplied
 implementations. Extract Gate-specific composition from its experimental sandbox
-facade into a separately packaged integration under `integrations/mirrorecma/`,
-using public interfaces from both libraries. Inventory `src/sandbox.ts`,
+facade into a Gate-owned supported integration under `integrations/mirrorecma/`,
+using public interfaces from both libraries. Separate packaging protects core
+dependencies; MirrorGate owns its distribution, lifecycle and evaluation receipts. Inventory `src/sandbox.ts`,
 `src/sandbox-model.ts`, root exports, optional peer/package declarations, examples,
 and consumer tests; freeze a compatibility/deprecation strategy before changing
 existing exports. Preserve runtime behavior until its replacement and migration
@@ -285,7 +311,7 @@ factory and source-test/CLI entry points. The optional service must call that
 same suite rather than duplicating its model semantics. Suite revision and
 private evaluator files remain independently approved from submitted source;
 public development tests can coexist in the source tree without granting access
-to private suites. See the [harness design](../../MirrorECMA/docs/mbt-harness-design.md).
+to private suites. See the [harness design](https://github.com/NzSN/MirrorECMA/blob/main/docs/mbt-harness-design.md).
 
 Migrate the Counter workflow so the user-started coordinator calls Gate directly
 through AH11 (or native Gate automation). The resulting implementation is tested
@@ -293,13 +319,61 @@ by ordinary MirrorECMA MBT against an existing Mirrors server. Preserve private
 evaluation/disclosure ownership, archived historical evidence, source/artifact
 identity, and real restricted build/worker execution. Retain a Gate-free core
 test/consumer gate and compare local versus proxy implementations through the
-same MBT entry point. Runtime migration is queued; documentation alone does not
-establish dependency removal or changed exports.
+same MBT entry point. The external package and MirrorECMA 2 cutover now implement
+this migration; completed destination/core/live checks establish delivery
+beyond the isolated implementation checkout.
 
 Exit evidence: equivalent native client behavior, public package/declaration
 consumption, and a migrated experiment receipt that records source/artifact
 identities, versions, public tool traffic, private evaluation outcome, and cleanup
 without exposing credentials or private oracle contents.
+
+### AH8.6 — Gate-owned local workflow and aggregate receipt
+
+Own the integration's `src/workflow.ts`, `src/provider.ts`,
+`src/receipt.ts`, public exports/declarations and focused workflow/receipt tests
+under `integrations/mirrorecma/`. AH8.2 hands over these shared files explicitly.
+Reuse AH3/AH4 host machinery, AH5 authoritative lifecycle and AH6 public control;
+do not create another session/snapshot/worker state machine.
+
+Freeze the trusted workflow input/output records before implementation: approved
+task/profile/workspace and suite references, model transport, deadline/disclosure
+policy, run/source/artifact/interface correlations, model outcome, primary error,
+cleanup outcome and remaining resources. Support source authoring followed by
+evaluation and an approved prebuilt implementation. Keep the same Gate owner
+connection and release it only after the complete workflow settles. The
+implementation factory is invoked after a required model match, not before.
+
+The Gate module owns readiness, host/credential/broker lifetime, evaluation
+composition and bounded cleanup; applications supply domain inputs and their
+suite. Cover failure before factory invocation, partial factory construction,
+late resolution after cancellation, source commit followed by failure, and
+cleanup failure after a model pass. Keep full diagnostics/identities trusted
+and apply the configured public projection to tool/service results. No private
+model or credentials may enter author/worker channels.
+
+### AH8.7 — Installed consumer with no custom lifecycle scripts
+
+Own new installed-consumer fixtures and registration/configuration examples under
+`integrations/mirrorecma/test/` and `integrations/mirrorecma/examples/`; coordinate
+Counter experiment migration with AH8.4. Consume packed installed artifacts as
+the test setup, then run with declarative configuration and the approved suite.
+No normal evaluation may compile the MirrorECMA library, run repository
+`npm pack`, or require caller-written copies of `setup-fresh-restricted-counter.py`
+and `run-fresh-restricted-counter.py`. Submitted application builds remain
+restricted and are not removed by this requirement.
+
+Verify a fresh implementer and a prebuilt submission through the same supported
+workflow. Require correct/faulty MBT outcomes, private-canary guards, no worker
+on model mismatch, retained owner through cleanup, and separate public/trusted
+receipts. Compare submitted source identity and show that only approved input
+configuration and suite code live in the consumer. The prior helper-driven
+MirrorExamples success is migration evidence, not completion of this task.
+
+AH8.6/AH8.7 are implemented in the external package and installed consumer.
+The synthetic-host/real-backend matrix supplements actual SDK, installed MCP
+protocol-harness and outside-Codex framework runs. Completed AH8.5/AH9/AH10
+destination evidence is recorded by the coordinator.
 
 ## AH11 — Standard outside-agent hosting-tool adapter
 
@@ -312,15 +386,15 @@ second launcher, broker lifecycle, or session transition implementation.
 Hosting tools are exposed only to the outside coordinating agent; they do not
 enable delegation by the restricted implementer.
 
-Implement AH1's tool contract in a Gate-owned module, proposed at
-`integrations/agent-host/`, using the public native SDK. The intended first
-transport is stdio MCP backed by the Node SDK; it is planned rather than an
-existing command or supported API. Package the entry point, schemas, explicit
+AH1's tool contract is implemented in the Gate-owned
+`integrations/agent-host/` module using the public native SDK. Its first
+transport is stdio MCP backed by the Node SDK, supplied through the package
+entry and CLI. Package the entry point, schemas, explicit
 trusted configuration, and registration examples so consumers need no custom
 launch wrapper. Configuration fixes approved task/context bindings and agent
 profiles; requests carry approved task references and caller-scoped opaque run
-references. Start, inspect, and cancel describe the intended operations; AH1
-freezes their exact tool names and schemas before implementation.
+references. `hosting_start`, `hosting_status` and `hosting_cancel` have closed
+schemas in the supplied adapter.
 
 Enforce capability checks before any agent allocation, validate tool arguments,
 bound outputs, and project only approved progress/results. Keep administrative
@@ -343,7 +417,8 @@ this packaging and outside-agent dispatch acceptance.
 ## AH12 — Optional evaluation-service and proxy
 
 Specify and implement the [evaluation-service design](evaluation-service-design.md)
-as a wrapper around AH8's reusable suite in the external integration. Keep
+as a wrapper around AH8.6's Gate-owned local workflow and receipt projection.
+Reuse AH8's approved suite; do not duplicate evaluation or cleanup orchestration. Keep
 MirrorECMA's public API implementation-neutral. A source test or CLI calls the
 suite directly; a service client requests the same evaluation by approved suite
 and implementation references. The service proxy is not the SUT operation proxy
@@ -383,7 +458,7 @@ interfaces. Earlier unit tests supplement these cases; they do not replace them.
 | Failure cleanup | AH3, AH5, AH6, AH7, AH9, AH11 |
 | Disclosure | AH1, AH3, AH4, AH8, AH9, AH11 |
 | Client independence | AH6, AH7, AH9 |
-| End-to-end evaluation | AH8, AH9, AH11: external integration supplies the implementation to ordinary MBT |
+| End-to-end evaluation | AH8, AH9, AH11: Gate-owned integration supplies the implementation to ordinary MBT |
 | MBT decoupling | AH8, AH9: core consumer/dependency checks and equivalent local/proxy replay |
 | Standard hosting tool | AH1, AH6, AH9, AH11 |
 
@@ -395,7 +470,7 @@ replace the supported runtime's dispatcher audit and actual fresh-author run.
 AH9 first verifies generic MirrorECMA imports, declarations, replay, cancellation,
 and reports with Gate absent. Then drive the packaged AH11 adapter from the
 outside coordinator, producing a fresh author, restricted build, frozen artifact,
-and real worker. The external integration supplies that proxy through the same
+and real worker. The Gate-owned integration supplies that proxy through the same
 MBT interface used for a local implementation, using an existing Mirrors server.
 Assert no authoring/Gate options or dependencies in the target core and verify
 consumer migration. Include build-hook/adapter-initialization private-canary
@@ -421,22 +496,42 @@ facades require them. Unavailable Bubblewrap, missing model authentication,
 skipped runtime checks, or unconfirmed cleanup cannot be recorded as passes.
 Do not seek or copy unrelated credentials to make a gate run.
 
+R1–R3 completion additionally requires AH8.6/AH8.7 installed-consumer evidence:
+no custom host/broker/process/credential/cleanup glue and no per-run library
+compilation/packing. The optional service must reuse the local workflow/receipt
+implementation. Record the helper-run baseline separately from product support.
+
 The coordinator independently reviews negative paths and final destination
 status. Update compatibility only for demonstrated profiles; keep release,
 hosted CI, resume, and other unimplemented behavior explicitly separate. No
 commit, push, or publication is implied by this task assignment.
 
-## Latest delegation results
+## Current implementation evidence and remaining acceptance
 
-| Assignment | Requested and instantiated role | Result | Remaining work |
-| --- | --- | --- | --- |
-| AH1.1 / `hosting_contract_decisions` | `specification_implementer` | Reviewed contract decision draft integrated into `docs/agent-hosting-contract-decisions.md` | AH1.2 schema/fixture freeze and all runtime implementation |
-| AH8.1 / `mbt_migration_plan` | `specification_implementer` | Reviewed companion plan integrated into MirrorECMA `docs/mbt-integration-tasks.md` | AH8.2–AH8.5 extraction, harness, integration and consumer gates |
+| Work packages | In-repository implementation / reproducible checks | Current boundary |
+| --- | --- | --- |
+| AH1.1–AH1.2, AH2.1 | [V2 contract](agent-hosting-control-v2.md), [shared corpus](../conformance/control-v2/vectors.jsonl), [codec tests](../tests/test_control_protocol_v2.py) | Frozen v1 assets and worker/model protocols preserved |
+| AH2.2, AH3.1–AH3.2 | [Runtime/profile/audit tests](../tests/test_agent_backend.py), [runtime adapter](../supervisor/mirrorgate/agent_runtime.py), [dispatcher audit](../supervisor/mirrorgate/agent_audit.py) | Actual audit, SDK author and real outer/inner Codex MCP workflow passed; per-installation audit freshness remains required |
+| AH4.1–AH4.2, AH5.1–AH5.2 | [Broker/backend tests](../tests/test_agent_backend.py), [controller races](../tests/test_hosting_controller.py) | Fake-host races are labeled; real Bubblewrap source/build handoff is tested separately |
+| AH6.1 | [Node v2 tests](../tests/node/control-v2.test.mjs), [real controller tests](../tests/node/control-v2-integration.test.mjs), [SDK API](../sdk/node/README.md) | Owned/attached native access; fixture authors are synthetic |
+| AH7.1 | [C++ hosting tests](../tests/cpp/hosting_test.cpp), [native lifecycle gate](../tests/cpp/hosting_e2e.cpp), [SDK API](../sdk/cpp/README.md) | Shared contract and real controller/build/worker; synthetic author is explicit |
+| AH8.1–AH8.3, AH8.5–AH8.7 | [Package API](../integrations/mirrorecma/README.md), [workflow](../integrations/mirrorecma/src/workflow.ts), [receipt](../integrations/mirrorecma/src/receipt.ts), [installed consumer gate](../integrations/mirrorecma/scripts/installed-workflow.mjs) | MirrorECMA core cutover and generic source/local/proxy suite verified in destination/core/live and interop gates |
+| AH8.4, AH9.1 | [Installed Counter application](../integrations/mirrorecma/examples/counter/evaluate.mjs), [full Gate gate](../scripts/test.sh) | Actual SDK/MCP/framework authors and synthetic matrix are distinct; destination Gate and real mTLS replay passed |
+| AH11.1–AH11.2 | [Hosting-tool API/configuration](../integrations/agent-host/README.md), [installed MCP tests](../tests/node/hosting-tool-package.test.mjs), [tool tests](../tests/node/hosting-tool.test.mjs) | AH11.1/AH11.2 passed: installed protocol harness and real outside-Codex framework registration/dispatch |
+| AH12.1–AH12.4 | [Local service contract](evaluation-service-contract-v1.md), [service/proxy tests](../integrations/mirrorecma/test/service.test.ts), [installed source/service driver](../integrations/mirrorecma/test/service-installed-driver.mjs) | Authenticated loopback HTTP and real Gate/Mirrors same-suite checks; no remote/TLS or durable restart profile |
+| AH10.1 | [Coordinator validation report](managed-workflow-validation.md) | Destination and final code gates passed; publication/hosted CI remain separate |
 
-The drafts make implementation assignments concrete; they are not successful
-runtime tests, contract freeze, facade extraction, or agent/service support.
+Independent review additionally exercised hostile runtime descendants, source and
+cleanup races, delayed SDK replies/events, service response socket teardown,
+callback getter mutation, overall polling deadlines and arbitrary rejection
+values. Fixes are supported by regression tests; the final evidence report owns
+exact final-tree commands, versions and exits.
 
 ## Planning and execution record
+
+The following earlier entries describe their state at the time of each design
+step. References to queued work in these historical entries are superseded by
+the current implementation/evidence tables above.
 
 - 2026-09-09: AH1–AH10 developed from the accepted design and assigned to
   `specification_implementer`; implementation remains queued.
@@ -457,22 +552,39 @@ runtime tests, contract freeze, facade extraction, or agent/service support.
   `specification_implementer` agents completed AH1.1 and AH8.1 planning drafts;
   the coordinator reviewed and integrated them. Runtime/schema/service packages
   remain queued. The earlier fallback-only assignment is historical.
+- 2026-09-09: Explicitly assigned R1 agent hosting, R2 sandbox/artifact lifecycle,
+  and R3 trusted MBT integration to MirrorGate. Added AH8.6 local workflow/receipt
+  and AH8.7 installed-consumer delivery; AH12 must reuse that local workflow.
+  The reviewed helper-driven Counter run passed five traces/24 ticks, but these
+  supported workflow tasks remain queued and no runtime change is claimed.
 - Planning review: complete using the worker fallback described above; the
   ledger incorporates the following source-grounded prerequisites. This is
   planning evidence, not completion of AH1 or any runtime task.
-- Runtime implementation, runtime tests, and feature acceptance: not started.
+- Runtime implementation, native clients, external MBT migration and optional
+  local service: implemented and exercised in the shared checkouts. Gate full
+  isolation/native gates passed locally. Actual outside-agent MCP dispatch and
+  final destination verification remain explicit acceptance work.
 
-### Planning review evidence
+- Final validation: destination parity, Gate full/native gates, MirrorECMA
+  core/live gates, integration/package tests, Mirrors gates and central interop
+  passed. Actual outside Codex registered the shipped MCP tool, launched a fresh
+  real implementer, submitted source, passed MBT and confirmed cleanup.
+
+### Historical planning review evidence
+
+These findings explain the original implementation requirements. The current
+code resolves the source-lease, run/tool-slot, runtime cleanup and package gaps;
+they are not descriptions of an unchanged current implementation.
 
 - Decoupling review confirmed that MirrorECMA's public async adapter registry
   already defers factory invocation until a validated model match. AH8 can keep
   Gate authorize/acquire/connect in the external factory and supply the generic
   binding without extending MBT semantics. Retain authority privacy and late
-  factory/disposal behavior. Current sandbox source, root exports, peer metadata,
-  and integration packaging still require actual migration and consumer tests.
+  factory/disposal behavior. At that planning point, sandbox source, root exports, peer metadata and
+  packaging still required migration; AH8 now implements that cutover.
 
-- [`ControlBackend.prepare`](../supervisor/mirrorgate/preparation.py) currently
-  rejects an already sealed session and combines source freezing with build and
+- [`ControlBackend.prepare`](../supervisor/mirrorgate/preparation.py) at the planning baseline
+  rejected an already sealed session and combines source freezing with build and
   artifact freezing. `_stop_authoring` sets the sealed flag. AH1/AH5 must define
   and implement reuse of a committed source lease; simply sealing in `submit`
   and invoking the current preparation path cannot work.
@@ -480,12 +592,12 @@ runtime tests, contract freeze, facade extraction, or agent/service support.
   enforce one active ordinary operation. AH1/AH5 must keep the hosted-run slot
   separate, otherwise a pending host operation excludes its own authoring tools.
 - The experiment's
-  [`run_author.py`](../../MirrorECMA/experiments/blind-counter/author-host/run_author.py)
+  [`run_author.py`](https://github.com/NzSN/MirrorECMA/blob/main/experiments/blind-counter/author-host/run_author.py)
   inherits `os.environ`, writes unbounded transcript/diagnostic files, and removes
   the authentication copy without establishing full host/broker/descendant
   cleanup. These are migration gaps for AH3/AH5, not supported hosting behavior.
 - The experiment's
-  [`audit_tools.py`](../../MirrorECMA/experiments/blind-counter/author-host/audit_tools.py)
+  [`audit_tools.py`](https://github.com/NzSN/MirrorECMA/blob/main/experiments/blind-counter/author-host/audit_tools.py)
   exercises shell, image, and patch rejection and a permitted public-contract
   call. It permits resource-discovery tools in the advertised inventory without
   exercising their denial. AH3/AH9 require the broader actual-dispatch and
@@ -495,5 +607,6 @@ runtime tests, contract freeze, facade extraction, or agent/service support.
   connection-bound as specified in
   [control v1 ownership](orchestration-control-v1.md#3-startup-principal-and-ownership);
   AH1 must define the adapter/evaluator shared-connection lifetime before AH11
-  implementation. The planned stdio MCP adapter has no runtime or package
-  acceptance evidence yet.
+  implementation. At that stage the stdio MCP adapter had no runtime/package evidence. The
+  current installed adapter and actual outside-Codex dispatch are covered above
+  by separately identified protocol-harness and real-framework evidence.

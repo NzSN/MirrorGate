@@ -57,4 +57,42 @@ if [[ "${MIRRORGATE_CPP_REAL_CONTROL:-0}" == "1" ]]; then
   python3 "$repo_root/tests/control_policy_fixture.py" "$scratch/rust-faulty-policy.json" \
     "$scratch/rust-submissions" --runtime rust --artifact-entry worker --faulty >/dev/null
   "$e2e" stdio "$repo_root/bin/mirrorgate" "$scratch/rust-faulty-policy.json" "$manifest" rust rust-v1 1
+  cleanup
+  trap - EXIT
+fi
+
+# Native client and real controller/backend, with only the author runtime and
+# admission replaced by the explicitly test-only deterministic fixture.
+if [[ "${MIRRORGATE_CPP_HOSTING_CONTROL:-0}" == "1" ]]; then
+  hosting_scratch="$(mktemp -d)"
+  hosting_pid=""
+  hosting_cleanup() {
+    if [[ -n "$hosting_pid" ]]; then
+      kill "$hosting_pid" 2>/dev/null || true
+      wait "$hosting_pid" 2>/dev/null || true
+    fi
+    rm -rf "$hosting_scratch"
+  }
+  trap hosting_cleanup EXIT
+  mkdir -p "$hosting_scratch/source" "$hosting_scratch/control"
+  chmod 0700 "$hosting_scratch/control"
+  hosting_fixture="$repo_root/tests/cpp/hosting_controller_fixture.py"
+  hosting_e2e="$build_dir/mirrorgate_hosting_e2e"
+  for hosting_mode in submit wait; do
+    cp "$repo_root/runtimes/node/examples/counter.mjs" "$hosting_scratch/source/adapter.mjs"
+    "$hosting_e2e" stdio "$hosting_fixture" "$hosting_scratch" \
+      "$repo_root/conformance/manifests/counter.json" "$hosting_mode"
+    cp "$repo_root/runtimes/node/examples/counter.mjs" "$hosting_scratch/source/adapter.mjs"
+    hosting_socket="$hosting_scratch/control/control.sock"
+    /usr/bin/python3 "$hosting_fixture" unix "$hosting_scratch" "$hosting_mode" "$hosting_socket" &
+    hosting_pid=$!
+    for _ in {1..100}; do [[ -S "$hosting_socket" ]] && break; sleep 0.02; done
+    [[ -S "$hosting_socket" ]]
+    "$hosting_e2e" unix "$hosting_socket" "$hosting_scratch" \
+      "$repo_root/conformance/manifests/counter.json" "$hosting_mode"
+    kill "$hosting_pid"
+    wait "$hosting_pid" || true
+    hosting_pid=""
+    rm -f "$hosting_socket"
+  done
 fi

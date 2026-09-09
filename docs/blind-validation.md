@@ -58,9 +58,10 @@ tools. Another directory or repository is insufficient when the agent can read
 it through the same account or tool permissions. Previously disclosed material
 cannot become an unseen test merely by moving it.
 
-The [planned MirrorGate agent host](agent-hosting-design.md) will own fresh
+The implemented [MirrorGate agent host](agent-hosting-control-v2.md) owns fresh
 implementer launch/configuration, approved-context delivery, tool mediation,
-and cleanup. Today those duties remain with the external host. The evaluator
+and cleanup. Its runtime audit and actual authoring checks are recorded in
+[final validation](managed-workflow-validation.md). The evaluator
 continues to approve public tasks and materials; Gate cannot determine that
 arbitrary caller-supplied text is safe to disclose. Native tools, implicit
 context loading, memory, connectors, hooks, and delegation must be disabled or
@@ -69,7 +70,7 @@ on the trusted hosting path, outside author tools and submission mounts.
 
 Submission must revoke authoring and quiesce managed writers before freezing.
 Resume and follow-up messages require a separate context/disclosure contract;
-the initial managed hosting profile will support fresh runs only. Human authors
+the implemented managed hosting profile supports fresh runs only. Human authors
 and external hosts may still use the gateway without claiming that Gate launched
 or configured their controller.
 

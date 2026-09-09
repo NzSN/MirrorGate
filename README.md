@@ -13,6 +13,12 @@ Node and Rust workers, strict public-port RPC, and a trusted Node proxy SDK.
 Isolation claims apply to the configured and tested profile, not arbitrary host
 tools. Aggregate cgroup quotas, Windows/macOS backends, and other language shims
 are not implemented. See the [backend's exact limits](docs/linux-bubblewrap.md).
+Managed hosting, native v2 clients, the external MBT workflow and optional local
+HTTP service are integrated in the destination repositories and their required
+gates passed. An actual Codex implementer also ran through the installed hosting
+tool's MCP protocol harness. A real outside Codex coordinator then registered
+the same installed MCP adapter and completed a real implementer/MBT/cleanup run. The [validation report](docs/managed-workflow-validation.md)
+records exact versions, commands and evidence. No package publication is claimed.
 
 ## Design documents
 
@@ -26,16 +32,20 @@ The [sandbox design walkthrough](https://github.com/NzSN/MirrorGate/blob/main/do
 through trusted configuration, Bubblewrap isolation, monitoring, and cleanup,
 and explains what the implementation agent's host must enforce.
 
-The accepted [agent-hosting design](docs/agent-hosting-design.md) assigns future
-implementer launch, configuration, restricted tools, and cleanup to MirrorGate.
+The [agent-hosting implementation](docs/agent-hosting-design.md) provides
+implementer launch, configuration, restricted tools, and cleanup through
+[control v2](docs/agent-hosting-control-v2.md).
 The user-started coordinator requests implementation directly from Gate through
 its standard hosting tool or native SDK. MirrorECMA retains generic MBT against
-implementations; a separate trusted integration supplies a Gate-backed proxy.
-Agent prompts, launch, builds, and Gate lifecycle stay outside MirrorECMA's target
-core. The existing coupled facade still awaits an explicit migration.
-Its [implementation tasks](docs/agent-hosting-tasks.md) record assignments,
-dependencies, and acceptance requirements. Managed agent hosting is planned;
-current agent launch/configuration remains in external hosts and experiment helpers.
+implementations; a Gate-owned trusted integration supplies the proxy and local
+evaluation workflow, retains the owner connection, and combines result/cleanup
+evidence. All three responsibilities are covered by the
+[managed workflow design](docs/managed-workflow-design.md).
+Agent prompts, launch, builds, and Gate lifecycle stay outside MirrorECMA's
+core. The extracted `mirrorgate-mirrorecma` package supplies `evaluateImplementation`,
+prepared providers and the compatibility `/legacy` entry point. MirrorECMA 2
+removes the Gate-specific core exports. The [task ledger](docs/agent-hosting-tasks.md)
+records completed destination and actual-framework acceptance evidence.
 
 The experimental [orchestration control v1 contract](https://github.com/NzSN/MirrorGate/blob/main/docs/orchestration-control-v1.md)
 defines the shared process needed by Mirrors client-guide section 13. The
@@ -47,13 +57,18 @@ cover the controller, immutable preparation, managed transport, and native
 Node/C++ SDKs. Its
 [MirrorECMA landing plan](https://github.com/NzSN/MirrorECMA/blob/main/docs/shared-orchestration-design.md)
 separates the control implementation, async replay prerequisites, native
-model facade, and cross-language acceptance. The model facades are follow-on
-work; production package publication remains disabled.
+model facade, and cross-language acceptance. Recorded local facade results are
+in the [implementation ledger](docs/orchestration-control-v1-tasks.md). V2 hosting
+uses separate schemas and capabilities; frozen v1 and worker RPC remain unchanged.
+Production package publication remains disabled.
 
-The planned [evaluation service](docs/evaluation-service-design.md) lets an agent,
+The optional [evaluation service](docs/evaluation-service-design.md) lets an agent,
 CI job, or application invoke the same trusted MBT harness used by source-code
 tests. Its service proxy requests evaluations; the implementation proxy invokes
-the SUT. Both stay outside MirrorECMA's core, and neither extends control v1.
+the SUT. The service's [local HTTP contract](docs/evaluation-service-contract-v1.md)
+uses configured caller tokens and approved suite/implementation references.
+Remote/TLS service deployment is not implemented. Both proxies stay outside
+MirrorECMA's core, and neither extends control v1.
 
 ## Architecture
 
@@ -67,16 +82,19 @@ Trusted evaluator  <--- public port RPC ---> Language shim -> Adapter -> SUT
 MirrorGate supervisor --------------------> Launch, limit, terminate, clean up
 ```
 
-MirrorECMA can provide the first trusted evaluator integration. A restricted
-worker implements the public port protocol and does not need a complete Mirrors
-client. Other language clients can integrate through the same protocol.
+MirrorGate's trusted evaluation integration uses generic MirrorECMA MBT and a
+Gate implementation proxy. A restricted worker implements public-port RPC and
+does not need a complete Mirrors client. Gate core and native SDKs remain usable
+without MirrorECMA; the external integration uses only public APIs from both.
 
 ## Responsibilities
 
 | Owner | Responsibility |
 | --- | --- |
 | Mirrors | Model resolution, interface generation, model execution, and comparison |
-| MirrorGate | Worker protocol, sandbox lifecycle, runtime shims, and shared conformance tests |
+| MirrorGate | Worker protocol, sandbox lifecycle, runtime shims, managed agent host, hosting tool and conformance |
+| MirrorECMA | Generic MBT against supplied implementations; core excludes hosting and Gate lifecycle |
+| MirrorGate-owned trusted evaluation integration | Supply the supported local workflow/proxy/factory, preserve admission and ownership, combine evaluation/cleanup evidence, and optionally expose a service |
 | Trusted evaluator | Private specification, validation configuration, expected results, and evaluation policy |
 | Application | Actual implementation and the adapter mapping public operations to it |
 
@@ -126,7 +144,8 @@ bash scripts/test.sh
 ```
 
 The fetch step obtains checksum-locked dependencies; subsequent build/test steps
-use Cargo offline. The Python and Node components use standard libraries only.
+use Cargo offline. The core Python supervisor and Node worker/SDK use standard libraries only.
+The optional MBT package separately depends on public MirrorECMA/Gate APIs.
 The TypeScript compiler is a test-only development dependency. Set
 `MIRRORGATE_NODE_RUNTIME_ROOT` to the approved Node 24.15.0 distribution root
 so actual sandbox workers use the same pinned runtime as the host tests.
@@ -145,6 +164,14 @@ CI results are separate from local validation.
 
 ## Integrate an evaluator or agent host
 
+- [Managed authoring control v2](docs/agent-hosting-control-v2.md): approved
+  profiles and public tasks through Node `startAgent` or C++ `start_agent`.
+- [Standard hosting tool](integrations/agent-host/README.md): configure/register
+  `mirrorgate-hosting-tool`; applications do not write a launcher or broker.
+- [Local evaluation workflow](integrations/mirrorecma/README.md):
+  `evaluateImplementation` and original-owner `evaluateHostedSubmission`.
+- [Optional evaluation service](integrations/mirrorecma/service/README.md):
+  authenticated loopback HTTP over the same approved suite and workflow.
 - [Node worker and proxy](docs/node-worker.md): `WorkerClient.launch`, native
   values, lifecycle, cancellation, and cleanup.
 - [Rust worker SDK](docs/rust-worker.md): reusable native adapter trait and

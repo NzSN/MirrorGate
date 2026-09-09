@@ -8,10 +8,11 @@ explains the implemented `linux-bubblewrap-v1` backend. The
 exact limits, and operational caveats; the [architecture](https://github.com/NzSN/MirrorGate/blob/main/docs/architecture.md)
 defines ownership across MirrorGate, the evaluator, and the agent host.
 
-The [agent-hosting design](agent-hosting-design.md) assigns the trusted host to
-MirrorGate as a planned optional module. The command gateway described here
-does not launch/configure an AI agent; it currently requires an external host.
-The proposed module will reuse this sandbox enforcement.
+The implemented [managed host](agent-hosting-control-v2.md) owns fresh Codex
+launch, configuration, tool mediation and cleanup, reusing this sandbox backend.
+The lower-level command gateway described here runs restricted commands; its
+callers may be the managed host, an external trusted host, or a human operator.
+See [final validation](managed-workflow-validation.md) for actual runtime evidence.
 
 ## From an agent request to a restricted command
 
@@ -180,9 +181,9 @@ source tree. Artifact identity also does not establish that submitted code is ho
 
 ## What the agent host must provide
 
-These obligations apply to current external hosts and the planned MirrorGate
-host module. Moving ownership does not relax them or automatically restrict an
-already-running agent.
+These obligations apply to the implemented MirrorGate managed host and to
+external hosts using the lower-level gateway. Managed-host admission requires a
+fresh audit of the supported runtime; it does not restrict an already-running agent.
 
 The gateway can restrict access to private specifications only when every
 access-capable agent tool goes through it or an explicitly approved restricted

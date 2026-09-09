@@ -6,29 +6,28 @@ reservation, and cleanup. Node and C++ clients speak the same
 The worker stream retains the existing
 [worker v1 contract](https://github.com/NzSN/MirrorGate/blob/main/docs/protocol-v1.md).
 The [task ledger](https://github.com/NzSN/MirrorGate/blob/main/docs/orchestration-control-v1-tasks.md)
-records implementation and gate evidence. The model-facing MirrorECMA and
-MirrorCPP orchestration facades remain separate follow-on work.
+records the original v1 landing. The Gate-owned MirrorECMA integration and
+MirrorCPP facade now pass the shared matrix; see [final validation](managed-workflow-validation.md).
 
 ## Start the shared process
 
-This guide covers the implemented controller. Agent launch/configuration is
-currently supplied by external hosts; `authoring.exec` runs restricted commands
-and does not start an AI implementer. The [agent-hosting design](agent-hosting-design.md)
-assigns that future responsibility to MirrorGate through a versioned control
-extension. No agent-launch or resume command is available in control v1.
+This guide describes control v1 preparation and worker orchestration. Its
+`authoring.exec` operation runs restricted commands; managed AI authoring uses
+[control v2](agent-hosting-control-v2.md), which the same controller supports.
+Control v1 records remain unchanged, and neither version supports resume.
 
-That planned extension also backs a MirrorGate-supplied
-[hosting-tool adapter](agent-hosting-design.md#standard-hosting-tool-adapter)
-for outside agents. Applications will configure/register the adapter; it will
-retain the owning connection across tool calls and expose only approved task
-and run operations. The adapter is not an existing control-v1/MCP entry point.
+For coordinating agents, register the implemented
+[hosting-tool adapter](../integrations/agent-host/README.md). It accepts approved
+task references and retains a dedicated Gate owner through hosting and evaluation.
+The [installed Counter application](../integrations/mirrorecma/examples/counter/README.md)
+shows the MCP entrypoint and operator configuration.
 
-In the primary planned workflow, the coordinator supplies the approved brief
-directly to Gate's hosting tool/SDK. A separate trusted evaluation integration
-retains the Gate owner connection and supplies a generic implementation proxy
-to MirrorECMA, which does not start/attach Gate in the revised target. The existing
+The [Gate-owned local evaluation workflow](../integrations/mirrorecma/WORKFLOW.md)
+composes hosting, preparation, a deferred implementation factory, and cleanup.
+Applications provide approved tasks, profiles, suites and configuration. The
+coordinator calls Gate directly; MirrorECMA performs generic MBT, and an existing
 Mirrors server uses a separate model transport. See the
-[implementation boundary](../../MirrorECMA/docs/implementation-boundary-design.md).
+[implemented ownership boundary](managed-workflow-design.md).
 
 Run the approved installation as an owned stdio process:
 
@@ -53,7 +52,9 @@ does not install this Python controller or its approved runtime trees.
 
 ## Fix the operator policy
 
-The catalog schema is `mirrorgate.control-policy/v1`. It selects approved input
+The v1 examples use `mirrorgate.control-policy/v1`. Managed hosting uses the
+[v2 catalog](agent-hosting-control-v2.md) with approved agent profiles and runtime
+audits. The v1 catalog selects approved input
 roots, authoring tools, build plans, runtime commands and mounts, and maximum
 limits. See the concrete
 [policy example](https://github.com/NzSN/MirrorGate/blob/main/tests/fixtures/control-policy-v1.example.json)
@@ -151,7 +152,7 @@ isolation suites. The C++ gate requires CMake, a C++17 compiler, and
 dependency is supplied as headers, set `MIRRORGATE_NLOHMANN_JSON_INCLUDE_DIR`
 to its directory containing `nlohmann/json.hpp`.
 
-Production publication remains disabled. Full client-guide section-13
-acceptance also requires correct and faulty model evaluations through the
-actual MirrorECMA and MirrorCPP facades, with their precise repository and
-generated-binding revisions recorded separately.
+Production publication remains disabled. The [final validation record](managed-workflow-validation.md)
+includes all 42 shared MirrorECMA/MirrorCPP cases, correct and faulty model
+evaluations, and the installed MCP workflow with actual coordinating and
+implementing Codex processes. Those model-facing gates supplement this SDK gate.

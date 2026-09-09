@@ -334,6 +334,7 @@ class ControlPolicy:
     tools: dict[str, ToolPlan]
     runtimes: dict[str, RuntimePlan]
     limits: ControlLimits
+    agent_profile_ids: tuple[str, ...] = ()
 
     @classmethod
     def parse(cls, value: Any) -> "ControlPolicy":
@@ -348,11 +349,26 @@ class ControlPolicy:
 class PolicyCatalog:
     """Immutable ID catalog selected by control requests."""
 
-    def __init__(self, policies: dict[str, ControlPolicy]):
+    def __init__(self, policies: dict[str, ControlPolicy], agent_profiles=None):
         self._policies = policies
+        self.agent_profiles = {} if agent_profiles is None else agent_profiles
 
     @classmethod
     def from_document(cls, value: Any) -> "PolicyCatalog":
+        if type(value) is dict and value.get("schema") == "mirrorgate.control-policy/v2":
+            from dataclasses import replace
+            from .agent_policy import AgentProfile
+            raw = _object(value, {"schema", "policies", "agentProfiles"}, "policy catalog v2")
+            profiles = _unique([AgentProfile.parse(item) for item in _array(raw["agentProfiles"], "agentProfiles")], "agent profile")
+            parsed = []
+            for item in _array(raw["policies"], "policies", nonempty=True):
+                item = _object(item, {"id", "roots", "buildPlans", "tools", "runtimes", "limits", "agentProfileIds"}, "policy v2")
+                ids = _array(item["agentProfileIds"], "agentProfileIds")
+                if any(type(key) is not str or key not in profiles for key in ids) or len(ids) != len(set(ids)):
+                    raise AdmissionError("policy agent profile references must be unique approved IDs")
+                base = {key: val for key, val in item.items() if key != "agentProfileIds"}
+                parsed.append(replace(ControlPolicy.parse(base), agent_profile_ids=tuple(ids)))
+            return cls(_unique(parsed, "policy"), profiles)
         raw = _object(value, {"schema", "policies"}, "policy catalog")
         if raw["schema"] != CATALOG_SCHEMA:
             raise AdmissionError("unsupported control policy schema")
@@ -375,6 +391,12 @@ class PolicyCatalog:
         except (OSError, UnicodeError, json.JSONDecodeError) as exc:
             raise AdmissionError("control policy file is not strict UTF-8 JSON") from exc
         return cls.from_document(value)
+
+    def agent_profile(self, policy_id: str, profile_id: str):
+        policy = self.select(policy_id)
+        if type(profile_id) is not str or profile_id not in policy.agent_profile_ids:
+            raise AdmissionError("agent profile is not approved by this policy")
+        return self.agent_profiles[profile_id]
 
     def select(self, policy_id: str) -> ControlPolicy:
         _id(policy_id, "policy id")

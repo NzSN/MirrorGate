@@ -12,13 +12,20 @@
     "./worker": {
       "types": "./sdk/node/worker.d.mts",
       "import": "./sdk/node/index.mjs"
+    },
+    "./hosting-tool": {
+      "types": "./integrations/agent-host/index.d.mts",
+      "import": "./integrations/agent-host/index.mjs"
     }
   },
   "files": [
     "sdk/node/*.mjs",
     "sdk/node/*.d.mts",
     "sdk/node/README.md",
-    "sdk/compatibility.json"
+    "sdk/compatibility.json",
+    "integrations/agent-host/*.mjs",
+    "integrations/agent-host/*.d.mts",
+    "integrations/agent-host/README.md"
   ],
   "scripts": {
     "test": "node --test tests/node/*.test.mjs tests/integration/*.test.mjs",
@@ -27,5 +34,8 @@
   },
   "devDependencies": {
     "typescript": "6.0.3"
+  },
+  "bin": {
+    "mirrorgate-hosting-tool": "integrations/agent-host/cli.mjs"
   }
 }

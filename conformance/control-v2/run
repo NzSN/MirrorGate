@@ -1,0 +1,44 @@
+#!/usr/bin/env python3
+"""Run shared hosting codec vectors; --schema also checks JSON Schema shapes."""
+import argparse
+import copy
+import json
+from pathlib import Path
+import sys
+import unittest
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "tests"))
+from test_control_protocol_v2 import HostingCodecTests
+
+args = argparse.ArgumentParser()
+args.add_argument("--schema", action="store_true", help="requires jsonschema with Draft 2020-12 support")
+options = args.parse_args()
+result = unittest.TextTestRunner(verbosity=2).run(unittest.defaultTestLoader.loadTestsFromTestCase(HostingCodecTests))
+if not result.wasSuccessful():
+    sys.exit(1)
+if options.schema:
+    from jsonschema import Draft202012Validator
+    schema = json.loads((ROOT / "protocol/control-v2/schema.json").read_text())
+    Draft202012Validator.check_schema(schema)
+    validator = Draft202012Validator(schema)
+    count = 0
+    rejected = 0
+    for line in (ROOT / "conformance/control-v2/vectors.jsonl").read_text().splitlines():
+        vector = json.loads(line)
+        if vector["valid"] and vector["kind"] != "operation":
+            validator.validate(vector["value"])
+            count += 1
+            mutated = copy.deepcopy(vector["value"])
+            mutated["unexpected"] = True
+            assert not validator.is_valid(mutated), vector["name"]
+            rejected += 1
+            # Every request argument and event payload is closed too.
+            field = "args" if vector["kind"] == "request" else "data" if vector["kind"] == "event" else "result" if vector["value"].get("ok") else "error"
+            mutated = copy.deepcopy(vector["value"])
+            mutated[field]["unexpected"] = True
+            assert not validator.is_valid(mutated), vector["name"]
+            rejected += 1
+    for definition in ("PublicTask", "PublicFile", "HostingLimits", "HostedRun", "CommittedSubmission", "RunProgress", "ProgressRecord"):
+        assert schema["$defs"][definition]["additionalProperties"] is False
+    print(f"Control v2 schema: {count} positive wire vectors and {rejected} closed-record negatives passed; semantic negatives covered by codec")

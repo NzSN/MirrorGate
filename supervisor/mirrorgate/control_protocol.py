@@ -468,3 +468,14 @@ def validate_attachment(message: Any, *, success=False) -> dict:
 def canonical_base64(data: bytes) -> str:
     if not isinstance(data, bytes) or len(data) > MAX_OUTPUT_CHUNK_BYTES: _fail("LIMIT_EXCEEDED", "authoring", "output chunk exceeds limit")
     return base64.b64encode(data).decode("ascii")
+
+
+def codec_for_version(version: int):
+    """Select an explicitly negotiated control codec; never downgrade hosting."""
+    if type(version) is int and version == 1:
+        import sys
+        return sys.modules[__name__]
+    if type(version) is int and version == 2:
+        from . import control_protocol_v2
+        return control_protocol_v2
+    _fail("VERSION_UNSUPPORTED", "bootstrap", "unsupported control version", fatal=True)

@@ -1,0 +1,48 @@
+{
+  "taskRef": "counter",
+  "gate": {
+    "kind": "owned",
+    "launcher": {
+      "command": "/approved/bin/mirrorgate"
+    },
+    "policyFile": "/approved/counter-policy.json"
+  },
+  "policyId": "counter",
+  "submission": {
+    "kind": "source",
+    "input": {
+      "rootId": "submission",
+      "relativePath": "counter"
+    },
+    "buildPlanId": "counter-build",
+    "authoring": true
+  },
+  "agent": {
+    "profileId": "restricted-codex",
+    "publicTask": {
+      "instructions": "Implement Counter through the supplied public port: Initialize resets actual stored count to zero; Tick adds stride 2 or 3; observe reports actual count. There is no upper cap. Produce adapter.mjs and a build script under the approved build contract.",
+      "files": [
+        {
+          "path": "COUNTER_PORT.md",
+          "text": "The adapter entry is adapter.mjs, an ESM module exporting createAdapter(). It returns {actions: {Initialize: () => void, Tick: ({Stride: bigint}) => void}, observe: () => ({Count: bigint})}. Initialize resets actual SUT state; Tick accepts Stride 2n or 3n; observe reads actual SUT state. Export no model protocol handlers. The approved build command runs /runtime/node/bin/node /source/build.mjs and must create the adapter and runtime files under /output. Author build.mjs and public tests; do not read a model oracle. Source and output are separate mounts."
+        }
+      ]
+    }
+  },
+  "mirror": "/approved/bin/mirror",
+  "modelRevision": "approved-counter-model-revision",
+  "modelConfig": {
+    "specPath": "/private/Counter.tla",
+    "invariant": "TraceComplete",
+    "lengthBound": 6,
+    "constInit": "CInit",
+    "paramVars": "parameters"
+  },
+  "tracePaths": [
+    "/private/counter.itf.json"
+  ],
+  "disclosure": {
+    "counts": false,
+    "implementationIdentity": false
+  }
+}

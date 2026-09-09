@@ -1,0 +1,18 @@
+{
+  "schema": "mirrorgate.hosting-lifecycle-vectors/v1",
+  "status": "normative acceptance scenarios; executed by controller/backend tests separately from the codec runner",
+  "cases": [
+    {"id":"owner-bound-run", "steps":["owner opens session", "owner starts run", "other same-UID connection inspects/cancels/prepares/acquires using copied handles"], "expected":{"error":"HANDLE_INVALID","ownerResourcesUnchanged":true}},
+    {"id":"one-run-independent-tool-slot", "steps":["start accepted run", "broker executes tool", "external authoring.exec", "second agent.start", "cancel while tool active"], "expected":{"brokerToolExecutes":true,"externalError":"STATE_INVALID","secondStartError":"STATE_INVALID","cancelDoesNotWaitForToolSlot":true}},
+    {"id":"cancel-before-freeze", "steps":["start run", "cancel wins before provisional freeze", "submit"], "expected":{"outcome":"cancelled","submission":null,"sourceLeases":0}},
+    {"id":"cancel-during-freeze", "steps":["start run", "begin provisional snapshot", "cancel wins", "snapshot returns"], "expected":{"outcome":"cancelled","submission":null,"sourceLeases":0}},
+    {"id":"cancel-after-commit", "steps":["submit commits", "agent.cancel", "hosting teardown succeeds"], "expected":{"outcome":"submitted","sourceLeases":1,"prepareAllowed":true}},
+    {"id":"prepare-exact-submitted-source", "steps":["submit commits", "host cleanup succeeds", "trusted writer changes live source", "session.prepare", "session.prepare again"], "expected":{"preparedHashEqualsSubmission":true,"preparedBytesEqualCommittedBytes":true,"repeatError":"STATE_INVALID"}},
+    {"id":"postcommit-host-failure", "steps":["submit commits", "agent crashes", "hosting cleanup fails", "session.prepare"], "expected":{"outcome":"submitted","cleanupStatus":"failed","prepareAllowed":false}},
+    {"id":"owner-eof-after-commit", "steps":["submit commits", "owner EOF", "another connection adopts copied handle"], "expected":{"submissionIdentityRetained":true,"physicalSourceLeases":0,"adoptionError":"HANDLE_INVALID"}},
+    {"id":"lost-start-reply", "steps":["agent.start accepted", "MCP call times out while control stays healthy", "agent.status by session"], "expected":{"startCount":1,"sameRunReturned":true}},
+    {"id":"audit-changed-input", "steps":["obtain passing audit", "mutate binary/template/tools/dependency/context behavior or expire receipt", "agent.start"], "expected":{"error":"AUDIT_UNAVAILABLE","authorAllocations":0}},
+    {"id":"no-submit-exit", "steps":["agent.start", "runtime exits successfully without submit"], "expected":{"outcome":"failed","error":"AGENT_EXITED","submission":null}},
+    {"id":"mismatch-before-worker", "steps":["submit", "prepare", "required model match fails"], "expected":{"authorizeCalls":0,"acquireCalls":0,"workerLaunches":0,"cleanupAwaited":true}}
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "es2022",
+    "module": "node16",
+    "moduleResolution": "node16",
+    "rootDir": ".",
+    "outDir": "compiled",
+    "strict": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "types": ["node"]
+  },
+  "include": [
+    "test/legacy-matrix-driver.ts",
+    "test/fixtures/model-interface/counter/generated-async/CounterMirror.generated.ts"
+  ]
+}

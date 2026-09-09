@@ -27,7 +27,7 @@ def main(argv=None) -> int:
     run.add_argument("--stderr-bytes", type=int, default=1024**2)
     run.add_argument("--eof-grace-seconds", type=float, default=0.5)
     run.add_argument("command", nargs=argparse.REMAINDER)
-    control = subparsers.add_parser("control", help="serve orchestration control v1")
+    control = subparsers.add_parser("control", help="serve negotiated orchestration control v1/v2")
     mode = control.add_mutually_exclusive_group(required=True)
     mode.add_argument("--stdio", action="store_true", help="serve one owned stdin/stdout connection")
     mode.add_argument("--unix-socket", metavar="PATH", help="serve attached filesystem Unix connections")

@@ -22,10 +22,10 @@ test('packed private package exposes typed control and worker subpaths to an iso
   await run('tar', ['-xzf', archive, '--strip-components=1', '-C', packageRoot]);
   const metadata = JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8'));
   assert.equal(metadata.private, true);
-  assert.deepEqual(Object.keys(metadata.exports), ['./control', './worker']);
+  assert.deepEqual(Object.keys(metadata.exports), ['./control', './worker', './hosting-tool']);
   const compatibility = JSON.parse(await readFile(join(packageRoot, 'sdk/compatibility.json'), 'utf8'));
   assert.equal(compatibility.sdkVersion, metadata.version);
-  assert.deepEqual(compatibility.controlVersions, [1]);
+  assert.deepEqual(compatibility.controlVersions, [1, 2]);
   assert.deepEqual(compatibility.workerVersions, [1]);
   assert.equal(compatibility.ownedProcessCloseReceipt, 'checked-reap-v1');
   assert.equal(compatibility.modelFacadeAcceptance, 'experimental-local-shared-matrix-verified');

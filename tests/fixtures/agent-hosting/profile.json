@@ -1,0 +1,20 @@
+{
+  "id": "restricted-codex",
+  "runtime": "codex",
+  "executable": "/operator/codex",
+  "version": "codex-cli 0.153.4",
+  "model": "gpt-5.6-sol",
+  "modelCatalog": "/operator/models.json",
+  "credentialFile": "/operator/auth.json",
+  "auditReceipt": "/operator/audit.json",
+  "auditMaxAgeSeconds": 86400,
+  "credentialRevision": "operator-v1",
+  "limits": {
+    "wallMs": 300000,
+    "stdoutBytes": 1048576,
+    "stderrBytes": 1048576,
+    "progressRecords": 256,
+    "progressBytes": 262144,
+    "progressRecordBytes": 16384
+  }
+}

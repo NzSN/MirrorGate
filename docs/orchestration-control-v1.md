@@ -5,15 +5,24 @@ The controller, immutable preparation, managed transport, and Node/C++ SDKs are
 implemented. Local validation and ownership are recorded in the
 [implementation ledger](https://github.com/NzSN/MirrorGate/blob/main/docs/orchestration-control-v1-tasks.md);
 the [usage guide](https://github.com/NzSN/MirrorGate/blob/main/docs/orchestration-control-usage.md)
-describes the concrete entry points. Full MirrorECMA/MirrorCPP model-facade
-acceptance remains follow-on work.
+describes the concrete entry points. The ledger records later local native-facade
+acceptance. The external-integration migration and managed hosting now also
+pass [destination validation](managed-workflow-validation.md).
 Design baseline: MirrorGate `a377341`, MirrorECMA `89fbd14`, and Mirrors `acc3d9d`.
 This design implements the shared-process obligations in
-[client guide §13](https://github.com/NzSN/Mirrors/blob/main/Docs/client-implementation-guide.md#13-shared-sandbox-orchestration-design-profile).
+[client guide §13](https://github.com/NzSN/Mirrors/blob/main/Docs/client-implementation-guide.md#13-shared-sandbox-orchestration-experimental-profile).
 The companion
 [MirrorECMA landing design](https://github.com/NzSN/MirrorECMA/blob/main/docs/shared-orchestration-design.md)
 defines the first native facade. Types and judgments follow the
 [shared semantic notation](https://github.com/NzSN/Mirrors/blob/main/Docs/semantic-notation.md).
+
+This document remains the implemented experimental v1 contract. The
+[control v2 contract](agent-hosting-control-v2.md) supplies implemented hosting
+operations with separate schemas and fixtures; no hosting operations are added here. The
+[evaluation service](evaluation-service-design.md) is a separate outer interface.
+The [revised architecture](architecture.md) keeps Gate-specific composition in
+an external integration rather than MirrorECMA core. Historical facade wording
+below describes the v1 landing, not completion of that extraction.
 
 ## 1. Decisions and scope
 
@@ -469,7 +478,8 @@ mediation of every access-capable agent tool remain host obligations.
 ## 11. Implementation ownership and gates
 
 The following paths implement the experimental Gate-side profile. Production
-publication and companion model-facade acceptance remain separate gates:
+publication remains separate from the passed [model-facade and hosting
+acceptance gates](managed-workflow-validation.md):
 
 | Module | Responsibility |
 | --- | --- |

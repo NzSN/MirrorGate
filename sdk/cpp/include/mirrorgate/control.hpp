@@ -60,7 +60,29 @@ void validate_control_operation_fixture(const Json& operation,
                                         const std::string& terminal_type);
 void validate_control_event_fixture(const Json& event);
 
+void validate_control_v2_request(const Json& request);
+void validate_control_v2_response(const Json& response, const Json& request,
+                                  const std::string& terminal_type = "");
+void validate_control_v2_event(const Json& event, const std::string& terminal_type = "");
+void validate_hosted_run(const Json& run);
+
 class ControlClient;
+
+// Connection/session-bound handle. Status is authoritative; progress is bounded.
+class HostedRun {
+ public:
+  HostedRun() = default;
+  const std::string& id() const noexcept { return run_id_; }
+  Json status();
+  Json cancel(const std::string& reason = "user-cancel");
+  Json wait(std::chrono::milliseconds timeout = std::chrono::minutes(5));
+ private:
+  friend class Session;
+  ControlClient& client() const;
+  std::weak_ptr<ControlLifetime> owner_;
+  std::string session_id_;
+  std::string run_id_;
+};
 
 class Operation {
  public:
@@ -99,6 +121,11 @@ class Session {
   Operation cancel(const std::string& reason = "user-cancel");
   Operation close(const Json* outcome_summary = nullptr);
   Json status();
+  HostedRun start_agent(const std::string& profile_id, const Json& public_task,
+                        const Json* limits = nullptr);
+  Json agent_status();
+  Json agent_status(const HostedRun& run);
+  Json cancel_agent(const HostedRun& run, const std::string& reason = "user-cancel");
 
  private:
   friend class ControlClient;
@@ -114,15 +141,18 @@ class ControlClient {
   static std::unique_ptr<ControlClient> launch(
       const std::vector<std::string>& approved_argv,
       const std::vector<std::string>& required_capabilities,
-      std::chrono::milliseconds request_timeout = std::chrono::seconds(5));
+      std::chrono::milliseconds request_timeout = std::chrono::seconds(5),
+      int control_version = 1);
   static std::unique_ptr<ControlClient> connect(
       const std::string& unix_path,
       const std::vector<std::string>& required_capabilities,
-      std::chrono::milliseconds request_timeout = std::chrono::seconds(5));
+      std::chrono::milliseconds request_timeout = std::chrono::seconds(5),
+      int control_version = 1);
   static std::unique_ptr<ControlClient> from_transport(
       std::unique_ptr<Transport> transport,
       const std::vector<std::string>& required_capabilities,
-      std::chrono::milliseconds request_timeout = std::chrono::seconds(5));
+      std::chrono::milliseconds request_timeout = std::chrono::seconds(5),
+      int control_version = 1);
 
   ~ControlClient();
   ControlClient(const ControlClient&) = delete;
@@ -140,10 +170,11 @@ class ControlClient {
  private:
   friend class Session;
   friend class Operation;
+  friend class HostedRun;
   explicit ControlClient(std::unique_ptr<Transport> transport,
                          std::chrono::milliseconds request_timeout);
-  void handshake(const std::vector<std::string>& required_capabilities);
-  Json receive_for(std::uint64_t request_id, const std::string& operation,
+  void handshake(const std::vector<std::string>& required_capabilities, int control_version);
+  Json receive_for(const Json& request,
                    std::chrono::milliseconds timeout);
   void accept_event(const Json& message);
   Operation accepted(const std::string& session_id, const Json& result,
@@ -154,6 +185,10 @@ class ControlClient {
   std::uint64_t next_request_id_ = 1;
   std::uint64_t next_event_sequence_ = 1;
   Json hello_;
+  int control_version_ = 1;
+  std::map<std::string, std::string> runs_;
+  std::map<std::string, Json> run_states_;
+  void record_run(const std::string& session_id, const Json& run);
   std::set<std::string> sessions_;
   std::deque<Event> events_;
   bool handshaken_ = false;

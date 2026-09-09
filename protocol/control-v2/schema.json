@@ -1,0 +1,2742 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mirrorgate.dev/schema/control-v2.json",
+  "$comment": "Closed record structure. Normative codec additionally enforces UTF-8/framing budgets, canonical paths, aggregate bounds, request correlation, progress and lifecycle relations. See agent-hosting-control-v2.md.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/Request"
+    },
+    {
+      "$ref": "#/$defs/Success"
+    },
+    {
+      "$ref": "#/$defs/BootstrapSuccess"
+    },
+    {
+      "$ref": "#/$defs/Failure"
+    },
+    {
+      "$ref": "#/$defs/Event"
+    }
+  ],
+  "$defs": {
+    "SafeId": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "Handle": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "Digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "PublicId": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,127}$"
+    },
+    "Error": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "enum": [
+            "AGENT_EXITED",
+            "AGENT_START_FAILED",
+            "ARGUMENT_INVALID",
+            "ATTACHMENT_FAILED",
+            "AUDIT_UNAVAILABLE",
+            "BACKEND_ADMISSION_FAILED",
+            "BUILD_FAILED",
+            "CANCELLED",
+            "CAPABILITY_UNAVAILABLE",
+            "CLEANUP_FAILED",
+            "DEADLINE_EXCEEDED",
+            "HANDLE_INVALID",
+            "LIMIT_EXCEEDED",
+            "NEGOTIATION_ATTESTATION_INVALID",
+            "OPERATION_UNKNOWN",
+            "POLICY_DENIED",
+            "PREPARATION_FAILED",
+            "STATE_INVALID",
+            "VERSION_UNSUPPORTED",
+            "WORKER_EXITED",
+            "WORKER_PROTOCOL_FAILED"
+          ]
+        },
+        "stage": {
+          "enum": [
+            "attach",
+            "authoring",
+            "authorize",
+            "bootstrap",
+            "build",
+            "cleanup",
+            "hosting",
+            "policy",
+            "prepare",
+            "worker"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 1024
+        },
+        "operationId": {
+          "$ref": "#/$defs/SafeId"
+        }
+      },
+      "required": [
+        "code",
+        "stage",
+        "message"
+      ],
+      "additionalProperties": false
+    },
+    "RemainingResources": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/PublicId"
+      },
+      "maxItems": 64,
+      "uniqueItems": true
+    },
+    "Cleanup": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "enum": [
+            "notStarted",
+            "pending",
+            "succeeded",
+            "failed"
+          ]
+        },
+        "remainingResources": {
+          "$ref": "#/$defs/RemainingResources"
+        }
+      },
+      "required": [
+        "status",
+        "remainingResources"
+      ],
+      "additionalProperties": false
+    },
+    "CleanupResult": {
+      "type": "object",
+      "properties": {
+        "phase": {
+          "enum": [
+            "closed",
+            "cleanupFailed"
+          ]
+        },
+        "cleanupStatus": {
+          "enum": [
+            "succeeded",
+            "failed"
+          ]
+        },
+        "remainingResources": {
+          "$ref": "#/$defs/RemainingResources"
+        }
+      },
+      "required": [
+        "phase",
+        "cleanupStatus",
+        "remainingResources"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "phase": {
+                "const": "closed"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "cleanupStatus": {
+                "const": "succeeded"
+              },
+              "remainingResources": {
+                "maxItems": 0
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "cleanupStatus": {
+                "const": "failed"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "InputRef": {
+      "type": "object",
+      "properties": {
+        "rootId": {
+          "$ref": "#/$defs/PublicId"
+        },
+        "relativePath": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        }
+      },
+      "required": [
+        "rootId",
+        "relativePath"
+      ],
+      "additionalProperties": false
+    },
+    "SourceSubmission": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "source"
+        },
+        "input": {
+          "$ref": "#/$defs/InputRef"
+        },
+        "buildPlanId": {
+          "$ref": "#/$defs/PublicId"
+        },
+        "authoring": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "kind",
+        "input",
+        "buildPlanId",
+        "authoring"
+      ],
+      "additionalProperties": false
+    },
+    "PrebuiltSubmission": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "prebuilt"
+        },
+        "input": {
+          "$ref": "#/$defs/InputRef"
+        }
+      },
+      "required": [
+        "kind",
+        "input"
+      ],
+      "additionalProperties": false
+    },
+    "Submission": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/SourceSubmission"
+        },
+        {
+          "$ref": "#/$defs/PrebuiltSubmission"
+        }
+      ]
+    },
+    "Limits": {
+      "type": "object",
+      "properties": {
+        "addressSpaceBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "commandCpuSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "executionWallMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "fileBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "openFiles": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "scratchBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "sessionWallMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "snapshotBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "snapshotFiles": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "stderrBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "stdoutBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "tmpBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "uidProcesses": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "HelloLimits": {
+      "type": "object",
+      "properties": {
+        "gracefulStopMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "helloTimeoutMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "maxCompletedOperationsPerSession": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "maxFrameBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "maxInflightRequestsPerConnection": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "maxJsonDepth": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "maxJsonNodes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "maxPendingOutputBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "maxSessionsPerConnection": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "requestAckTimeoutMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "sessionWallMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "teardownMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "workerAttachmentTimeoutMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "gracefulStopMs",
+        "helloTimeoutMs",
+        "maxCompletedOperationsPerSession",
+        "maxFrameBytes",
+        "maxInflightRequestsPerConnection",
+        "maxJsonDepth",
+        "maxJsonNodes",
+        "maxPendingOutputBytes",
+        "maxSessionsPerConnection",
+        "requestAckTimeoutMs",
+        "sessionWallMs",
+        "teardownMs",
+        "workerAttachmentTimeoutMs"
+      ],
+      "additionalProperties": false
+    },
+    "CapabilityLimits": {
+      "type": "object",
+      "properties": {
+        "addressSpaceBytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "commandCpuSeconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "executionWallMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "fileBytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "gracefulStopMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "helloTimeoutMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "maxCompletedOperationsPerSession": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "maxFrameBytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "maxInflightRequestsPerConnection": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "maxJsonDepth": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "maxJsonNodes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "maxPendingOutputBytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "maxSessionsPerConnection": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "openFiles": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "requestAckTimeoutMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "scratchBytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "sessionWallMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "snapshotBytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "snapshotFiles": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "stderrBytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "stdoutBytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "teardownMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "tmpBytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "uidProcesses": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "workerAttachmentTimeoutMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "Capability": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/PublicId"
+        },
+        "available": {
+          "type": "boolean"
+        },
+        "enforcedScope": {
+          "enum": [
+            "connection",
+            "session",
+            "command",
+            "process",
+            "host-uid",
+            "host",
+            "none"
+          ]
+        },
+        "limits": {
+          "$ref": "#/$defs/CapabilityLimits"
+        },
+        "reason": {
+          "$ref": "#/$defs/PublicId"
+        }
+      },
+      "required": [
+        "id",
+        "available",
+        "enforcedScope",
+        "limits"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "available": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "enforcedScope": {
+                "not": {
+                  "const": "none"
+                }
+              }
+            },
+            "not": {
+              "required": [
+                "reason"
+              ]
+            }
+          },
+          "else": {
+            "required": [
+              "reason"
+            ],
+            "properties": {
+              "enforcedScope": {
+                "const": "none"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "Hello": {
+      "type": "object",
+      "properties": {
+        "controlVersion": {
+          "enum": [
+            1,
+            2
+          ]
+        },
+        "instanceId": {
+          "$ref": "#/$defs/Handle"
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Capability"
+          },
+          "maxItems": 64
+        },
+        "limits": {
+          "$ref": "#/$defs/HelloLimits"
+        }
+      },
+      "required": [
+        "controlVersion",
+        "instanceId",
+        "capabilities",
+        "limits"
+      ],
+      "additionalProperties": false
+    },
+    "Attestation": {
+      "type": "object",
+      "properties": {
+        "request": {
+          "const": "verify"
+        },
+        "policy": {
+          "const": "require"
+        },
+        "status": {
+          "const": "matched"
+        },
+        "descriptorSchema": {
+          "const": "mirrors.model-interface-descriptor/v1"
+        },
+        "registrationId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "adapterId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "targetProfile": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "stateComputerContractVersion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "semanticDigest": {
+          "$ref": "#/$defs/Digest"
+        }
+      },
+      "required": [
+        "request",
+        "policy",
+        "status",
+        "descriptorSchema",
+        "registrationId",
+        "adapterId",
+        "targetProfile",
+        "stateComputerContractVersion",
+        "semanticDigest"
+      ],
+      "additionalProperties": false
+    },
+    "OutcomeSummary": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "enum": [
+            "passed",
+            "mismatch",
+            "failed",
+            "cancelled",
+            "timedOut"
+          ]
+        },
+        "failureFamily": {
+          "$ref": "#/$defs/PublicId"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "additionalProperties": false
+    },
+    "Resources": {
+      "type": "object",
+      "properties": {
+        "authoringProcesses": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "buildProcesses": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "workers": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "snapshots": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "authoringProcesses",
+        "buildProcesses",
+        "workers",
+        "snapshots"
+      ],
+      "additionalProperties": false
+    },
+    "SessionStatus": {
+      "type": "object",
+      "properties": {
+        "phase": {
+          "enum": [
+            "authoring",
+            "authorized",
+            "cleanupFailed",
+            "closed",
+            "closing",
+            "open",
+            "prepared",
+            "preparing",
+            "reserved",
+            "running",
+            "starting",
+            "submitted"
+          ]
+        },
+        "resources": {
+          "$ref": "#/$defs/Resources"
+        },
+        "cleanup": {
+          "$ref": "#/$defs/Cleanup"
+        }
+      },
+      "required": [
+        "phase",
+        "resources",
+        "cleanup"
+      ],
+      "additionalProperties": false
+    },
+    "CommandResult": {
+      "type": "object",
+      "properties": {
+        "exitCode": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "stdoutBytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "stderrBytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "exitCode",
+        "stdoutBytes",
+        "stderrBytes"
+      ],
+      "additionalProperties": false
+    },
+    "Prepared": {
+      "type": "object",
+      "properties": {
+        "preparedRevision": {
+          "const": 1
+        },
+        "artifactId": {
+          "$ref": "#/$defs/Handle"
+        },
+        "artifactHash": {
+          "$ref": "#/$defs/Digest"
+        },
+        "manifestHash": {
+          "$ref": "#/$defs/Digest"
+        },
+        "runtime": {
+          "$ref": "#/$defs/PublicId"
+        },
+        "policyId": {
+          "$ref": "#/$defs/PublicId"
+        },
+        "challenge": {
+          "$ref": "#/$defs/Handle"
+        },
+        "sourceHash": {
+          "$ref": "#/$defs/Digest"
+        }
+      },
+      "required": [
+        "preparedRevision",
+        "artifactId",
+        "artifactHash",
+        "manifestHash",
+        "runtime",
+        "policyId",
+        "challenge"
+      ],
+      "additionalProperties": false
+    },
+    "WorkerDescriptor": {
+      "type": "object",
+      "properties": {
+        "workerId": {
+          "$ref": "#/$defs/Handle"
+        },
+        "endpoint": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "unix"
+            },
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 107
+            }
+          },
+          "required": [
+            "kind",
+            "path"
+          ],
+          "additionalProperties": false
+        },
+        "attachmentToken": {
+          "$ref": "#/$defs/Digest"
+        },
+        "attachmentTimeoutMs": {
+          "$ref": "#/$defs/SafeId"
+        },
+        "releaseMode": {
+          "const": "control-v1"
+        }
+      },
+      "required": [
+        "workerId",
+        "endpoint",
+        "attachmentToken",
+        "attachmentTimeoutMs",
+        "releaseMode"
+      ],
+      "additionalProperties": false
+    },
+    "Accepted": {
+      "type": "object",
+      "properties": {
+        "operationId": {
+          "$ref": "#/$defs/SafeId"
+        }
+      },
+      "required": [
+        "operationId"
+      ],
+      "additionalProperties": false
+    },
+    "SessionOpened": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "$ref": "#/$defs/Handle"
+        }
+      },
+      "required": [
+        "sessionId"
+      ],
+      "additionalProperties": false
+    },
+    "Authorized": {
+      "type": "object",
+      "properties": {
+        "authorizationId": {
+          "$ref": "#/$defs/Handle"
+        }
+      },
+      "required": [
+        "authorizationId"
+      ],
+      "additionalProperties": false
+    },
+    "WorkerReleaseAccepted": {
+      "type": "object",
+      "properties": {
+        "operationId": {
+          "$ref": "#/$defs/SafeId"
+        },
+        "cleanupMode": {
+          "enum": [
+            "dispose-then-terminate",
+            "terminate-only"
+          ]
+        }
+      },
+      "required": [
+        "operationId",
+        "cleanupMode"
+      ],
+      "additionalProperties": false
+    },
+    "OperationPending": {
+      "type": "object",
+      "properties": {
+        "operationId": {
+          "$ref": "#/$defs/SafeId"
+        },
+        "status": {
+          "const": "pending"
+        }
+      },
+      "required": [
+        "operationId",
+        "status"
+      ],
+      "additionalProperties": false
+    },
+    "OperationSucceeded": {
+      "type": "object",
+      "properties": {
+        "operationId": {
+          "$ref": "#/$defs/SafeId"
+        },
+        "status": {
+          "const": "succeeded"
+        },
+        "result": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/CommandResult"
+            },
+            {
+              "$ref": "#/$defs/Prepared"
+            },
+            {
+              "$ref": "#/$defs/CleanupResult"
+            }
+          ]
+        }
+      },
+      "required": [
+        "operationId",
+        "status",
+        "result"
+      ],
+      "additionalProperties": false
+    },
+    "OperationFailed": {
+      "type": "object",
+      "properties": {
+        "operationId": {
+          "$ref": "#/$defs/SafeId"
+        },
+        "status": {
+          "const": "failed"
+        },
+        "error": {
+          "$ref": "#/$defs/Error"
+        }
+      },
+      "required": [
+        "operationId",
+        "status",
+        "error"
+      ],
+      "additionalProperties": false
+    },
+    "OperationStatus": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/OperationPending"
+        },
+        {
+          "$ref": "#/$defs/OperationSucceeded"
+        },
+        {
+          "$ref": "#/$defs/OperationFailed"
+        }
+      ]
+    },
+    "OperationTerminal": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/OperationSucceeded"
+        },
+        {
+          "$ref": "#/$defs/OperationFailed"
+        }
+      ]
+    },
+    "PublicFile": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024,
+          "pattern": "^(?!/)(?!\\.mirrorgate(?:/|$))(?!.*\\\\)(?!.*\\u0000)(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*//)(?!.*\\/$).+$"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 262144
+        }
+      },
+      "required": [
+        "path",
+        "text"
+      ],
+      "additionalProperties": false
+    },
+    "PublicTask": {
+      "type": "object",
+      "properties": {
+        "instructions": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 65536
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PublicFile"
+          },
+          "maxItems": 128
+        }
+      },
+      "required": [
+        "instructions",
+        "files"
+      ],
+      "additionalProperties": false
+    },
+    "HostingLimits": {
+      "type": "object",
+      "properties": {
+        "wallMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 300000
+        },
+        "stdoutBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1048576
+        },
+        "stderrBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1048576
+        },
+        "progressRecords": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 256
+        },
+        "progressBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 262144
+        },
+        "progressRecordBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16384
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "AcceptedHostingLimits": {
+      "type": "object",
+      "properties": {
+        "wallMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 300000
+        },
+        "stdoutBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1048576
+        },
+        "stderrBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1048576
+        },
+        "progressRecords": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 256
+        },
+        "progressBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 262144
+        },
+        "progressRecordBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16384
+        }
+      },
+      "required": [
+        "wallMs",
+        "stdoutBytes",
+        "stderrBytes",
+        "progressRecords",
+        "progressBytes",
+        "progressRecordBytes"
+      ],
+      "additionalProperties": false
+    },
+    "CommittedSubmission": {
+      "type": "object",
+      "properties": {
+        "submissionId": {
+          "$ref": "#/$defs/Handle"
+        },
+        "sourceHash": {
+          "$ref": "#/$defs/Digest"
+        },
+        "sourceRevision": {
+          "const": 1
+        }
+      },
+      "required": [
+        "submissionId",
+        "sourceHash",
+        "sourceRevision"
+      ],
+      "additionalProperties": false
+    },
+    "ProgressRecord": {
+      "type": "object",
+      "properties": {
+        "seq": {
+          "$ref": "#/$defs/SafeId"
+        },
+        "message": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 16384
+        }
+      },
+      "required": [
+        "seq",
+        "message"
+      ],
+      "additionalProperties": false
+    },
+    "RunProgress": {
+      "type": "object",
+      "properties": {
+        "firstSeq": {
+          "$ref": "#/$defs/SafeId"
+        },
+        "nextSeq": {
+          "$ref": "#/$defs/SafeId"
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "records": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ProgressRecord"
+          },
+          "maxItems": 256
+        }
+      },
+      "required": [
+        "firstSeq",
+        "nextSeq",
+        "truncated",
+        "records"
+      ],
+      "additionalProperties": false
+    },
+    "HostedRun": {
+      "type": "object",
+      "properties": {
+        "runId": {
+          "$ref": "#/$defs/Handle"
+        },
+        "phase": {
+          "enum": [
+            "cleaning",
+            "finished",
+            "running",
+            "starting",
+            "submitting"
+          ]
+        },
+        "cleanup": {
+          "$ref": "#/$defs/Cleanup"
+        },
+        "limits": {
+          "$ref": "#/$defs/AcceptedHostingLimits"
+        },
+        "progress": {
+          "$ref": "#/$defs/RunProgress"
+        },
+        "outcome": {
+          "enum": [
+            "cancelled",
+            "failed",
+            "submitted",
+            "timedOut"
+          ]
+        },
+        "submission": {
+          "$ref": "#/$defs/CommittedSubmission"
+        },
+        "error": {
+          "$ref": "#/$defs/Error"
+        }
+      },
+      "required": [
+        "runId",
+        "phase",
+        "cleanup",
+        "limits",
+        "progress"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "outcome"
+            ],
+            "properties": {
+              "outcome": {
+                "const": "submitted"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "submission"
+            ],
+            "not": {
+              "required": [
+                "error"
+              ]
+            }
+          },
+          "else": {
+            "not": {
+              "required": [
+                "submission"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "outcome"
+            ],
+            "properties": {
+              "outcome": {
+                "enum": [
+                  "failed",
+                  "cancelled",
+                  "timedOut"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "error"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "error"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "phase": {
+                "const": "starting"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "cleanup": {
+                "properties": {
+                  "status": {
+                    "enum": [
+                      "notStarted"
+                    ]
+                  }
+                }
+              }
+            },
+            "not": {
+              "required": [
+                "outcome"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "phase": {
+                "const": "running"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "cleanup": {
+                "properties": {
+                  "status": {
+                    "enum": [
+                      "notStarted"
+                    ]
+                  }
+                }
+              }
+            },
+            "not": {
+              "required": [
+                "outcome"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "phase": {
+                "const": "submitting"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "cleanup": {
+                "properties": {
+                  "status": {
+                    "enum": [
+                      "notStarted"
+                    ]
+                  }
+                }
+              }
+            },
+            "not": {
+              "required": [
+                "outcome"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "phase": {
+                "const": "cleaning"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "cleanup": {
+                "properties": {
+                  "status": {
+                    "enum": [
+                      "pending"
+                    ]
+                  }
+                }
+              }
+            },
+            "required": [
+              "outcome"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "phase": {
+                "const": "finished"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "cleanup": {
+                "properties": {
+                  "status": {
+                    "enum": [
+                      "succeeded",
+                      "failed"
+                    ]
+                  }
+                }
+              }
+            },
+            "required": [
+              "outcome"
+            ]
+          }
+        }
+      ]
+    },
+    "RunAccepted": {
+      "type": "object",
+      "properties": {
+        "runId": {
+          "$ref": "#/$defs/Handle"
+        }
+      },
+      "required": [
+        "runId"
+      ],
+      "additionalProperties": false
+    },
+    "RunStatus": {
+      "type": "object",
+      "properties": {
+        "run": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/HostedRun"
+            }
+          ]
+        }
+      },
+      "required": [
+        "run"
+      ],
+      "additionalProperties": false
+    },
+    "Request": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 1
+            },
+            "kind": {
+              "const": "request"
+            },
+            "id": {
+              "$ref": "#/$defs/SafeId"
+            },
+            "op": {
+              "const": "hello"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "controlVersions": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  "maxItems": 8,
+                  "minItems": 1,
+                  "uniqueItems": true
+                },
+                "requiredCapabilities": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/PublicId"
+                  },
+                  "maxItems": 64,
+                  "uniqueItems": true
+                }
+              },
+              "required": [
+                "controlVersions",
+                "requiredCapabilities"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "kind",
+            "id",
+            "op",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "kind": {
+              "const": "request"
+            },
+            "id": {
+              "$ref": "#/$defs/SafeId"
+            },
+            "op": {
+              "const": "session.open"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "policyId": {
+                  "$ref": "#/$defs/PublicId"
+                },
+                "submission": {
+                  "$ref": "#/$defs/Submission"
+                },
+                "runtime": {
+                  "$ref": "#/$defs/PublicId"
+                },
+                "manifestJson": {
+                  "type": "string",
+                  "minLength": 0,
+                  "maxLength": 262144
+                },
+                "limits": {
+                  "$ref": "#/$defs/Limits"
+                },
+                "modelRevisionId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128,
+                  "pattern": "^[\\x00-\\x7f]*$"
+                }
+              },
+              "required": [
+                "policyId",
+                "submission",
+                "runtime",
+                "manifestJson"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "kind",
+            "id",
+            "op",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "kind": {
+              "const": "request"
+            },
+            "id": {
+              "$ref": "#/$defs/SafeId"
+            },
+            "op": {
+              "const": "authoring.exec"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "sessionId": {
+                  "$ref": "#/$defs/Handle"
+                },
+                "toolId": {
+                  "$ref": "#/$defs/PublicId"
+                },
+                "arguments": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 0,
+                    "maxLength": 65535
+                  },
+                  "maxItems": 256
+                },
+                "cwd": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 1024
+                }
+              },
+              "required": [
+                "sessionId",
+                "toolId",
+                "arguments",
+                "cwd"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "kind",
+            "id",
+            "op",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "kind": {
+              "const": "request"
+            },
+            "id": {
+              "$ref": "#/$defs/SafeId"
+            },
+            "op": {
+              "const": "session.prepare"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "sessionId": {
+                  "$ref": "#/$defs/Handle"
+                }
+              },
+              "required": [
+                "sessionId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "kind",
+            "id",
+            "op",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "kind": {
+              "const": "request"
+            },
+            "id": {
+              "$ref": "#/$defs/SafeId"
+            },
+            "op": {
+              "const": "session.authorize"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "sessionId": {
+                  "$ref": "#/$defs/Handle"
+                },
+                "preparedRevision": {
+                  "$ref": "#/$defs/SafeId"
+                },
+                "challenge": {
+                  "$ref": "#/$defs/Handle"
+                },
+                "attestation": {
+                  "$ref": "#/$defs/Attestation"
+                }
+              },
+              "required": [
+                "sessionId",
+                "preparedRevision",
+                "challenge",
+                "attestation"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "kind",
+            "id",
+            "op",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "kind": {
+              "const": "request"
+            },
+            "id": {
+              "$ref": "#/$defs/SafeId"
+            },
+            "op": {
+              "const": "worker.acquire"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "sessionId": {
+                  "$ref": "#/$defs/Handle"
+                },
+                "authorizationId": {
+                  "$ref": "#/$defs/Handle"
+                }
+              },
+              "required": [
+                "sessionId",
+                "authorizationId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "kind",
+            "id",
+            "op",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "kind": {
+              "const": "request"
+            },
+            "id": {
+              "$ref": "#/$defs/SafeId"
+            },
+            "op": {
+              "const": "worker.release"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "sessionId": {
+                  "$ref": "#/$defs/Handle"
+                },
+                "workerId": {
+                  "$ref": "#/$defs/Handle"
+                },
+                "reason": {
+                  "enum": [
+                    "normal",
+                    "user-cancel",
+                    "deadline",
+                    "client-failure",
+                    "worker-failure"
+                  ]
+                }
+              },
+              "required": [
+                "sessionId",
+                "workerId",
+                "reason"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "kind",
+            "id",
+            "op",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "kind": {
+              "const": "request"
+            },
+            "id": {
+              "$ref": "#/$defs/SafeId"
+            },
+            "op": {
+              "const": "session.cancel"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "sessionId": {
+                  "$ref": "#/$defs/Handle"
+                },
+                "reason": {
+                  "enum": [
+                    "normal",
+                    "user-cancel",
+                    "deadline",
+                    "client-failure",
+                    "worker-failure"
+                  ]
+                }
+              },
+              "required": [
+                "sessionId",
+                "reason"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "kind",
+            "id",
+            "op",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "kind": {
+              "const": "request"
+            },
+            "id": {
+              "$ref": "#/$defs/SafeId"
+            },
+            "op": {
+              "const": "session.close"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "sessionId": {
+                  "$ref": "#/$defs/Handle"
+                },
+                "outcomeSummary": {
+                  "$ref": "#/$defs/OutcomeSummary"
+                }
+              },
+              "required": [
+                "sessionId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "kind",
+            "id",
+            "op",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "kind": {
+              "const": "request"
+            },
+            "id": {
+              "$ref": "#/$defs/SafeId"
+            },
+            "op": {
+              "const": "session.status"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "sessionId": {
+                  "$ref": "#/$defs/Handle"
+                }
+              },
+              "required": [
+                "sessionId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "kind",
+            "id",
+            "op",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "kind": {
+              "const": "request"
+            },
+            "id": {
+              "$ref": "#/$defs/SafeId"
+            },
+            "op": {
+              "const": "operation.status"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "sessionId": {
+                  "$ref": "#/$defs/Handle"
+                },
+                "operationId": {
+                  "$ref": "#/$defs/SafeId"
+                }
+              },
+              "required": [
+                "sessionId",
+                "operationId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "kind",
+            "id",
+            "op",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "kind": {
+              "const": "request"
+            },
+            "id": {
+              "$ref": "#/$defs/SafeId"
+            },
+            "op": {
+              "const": "agent.start"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "sessionId": {
+                  "$ref": "#/$defs/Handle"
+                },
+                "profileId": {
+                  "$ref": "#/$defs/PublicId"
+                },
+                "publicTask": {
+                  "$ref": "#/$defs/PublicTask"
+                },
+                "limits": {
+                  "$ref": "#/$defs/HostingLimits"
+                }
+              },
+              "required": [
+                "sessionId",
+                "profileId",
+                "publicTask"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "kind",
+            "id",
+            "op",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "kind": {
+              "const": "request"
+            },
+            "id": {
+              "$ref": "#/$defs/SafeId"
+            },
+            "op": {
+              "const": "agent.status"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "sessionId": {
+                  "$ref": "#/$defs/Handle"
+                },
+                "runId": {
+                  "$ref": "#/$defs/Handle"
+                }
+              },
+              "required": [
+                "sessionId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "kind",
+            "id",
+            "op",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "kind": {
+              "const": "request"
+            },
+            "id": {
+              "$ref": "#/$defs/SafeId"
+            },
+            "op": {
+              "const": "agent.cancel"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "sessionId": {
+                  "$ref": "#/$defs/Handle"
+                },
+                "runId": {
+                  "$ref": "#/$defs/Handle"
+                },
+                "reason": {
+                  "enum": [
+                    "normal",
+                    "user-cancel",
+                    "deadline",
+                    "client-failure",
+                    "worker-failure"
+                  ]
+                }
+              },
+              "required": [
+                "sessionId",
+                "runId",
+                "reason"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "kind",
+            "id",
+            "op",
+            "args"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "Success": {
+      "type": "object",
+      "properties": {
+        "v": {
+          "const": 2
+        },
+        "kind": {
+          "const": "response"
+        },
+        "id": {
+          "$ref": "#/$defs/SafeId"
+        },
+        "ok": {
+          "const": true
+        },
+        "result": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/SessionOpened"
+            },
+            {
+              "$ref": "#/$defs/Accepted"
+            },
+            {
+              "$ref": "#/$defs/Authorized"
+            },
+            {
+              "$ref": "#/$defs/WorkerDescriptor"
+            },
+            {
+              "$ref": "#/$defs/WorkerReleaseAccepted"
+            },
+            {
+              "$ref": "#/$defs/OperationStatus"
+            },
+            {
+              "$ref": "#/$defs/SessionStatus"
+            },
+            {
+              "$ref": "#/$defs/RunAccepted"
+            },
+            {
+              "$ref": "#/$defs/RunStatus"
+            }
+          ]
+        }
+      },
+      "required": [
+        "v",
+        "kind",
+        "id",
+        "ok",
+        "result"
+      ],
+      "additionalProperties": false
+    },
+    "BootstrapSuccess": {
+      "type": "object",
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "kind": {
+          "const": "response"
+        },
+        "id": {
+          "$ref": "#/$defs/SafeId"
+        },
+        "ok": {
+          "const": true
+        },
+        "result": {
+          "$ref": "#/$defs/Hello"
+        }
+      },
+      "required": [
+        "v",
+        "kind",
+        "id",
+        "ok",
+        "result"
+      ],
+      "additionalProperties": false
+    },
+    "Failure": {
+      "type": "object",
+      "properties": {
+        "v": {
+          "enum": [
+            1,
+            2
+          ]
+        },
+        "kind": {
+          "const": "response"
+        },
+        "id": {
+          "$ref": "#/$defs/SafeId"
+        },
+        "ok": {
+          "const": false
+        },
+        "error": {
+          "$ref": "#/$defs/Error"
+        }
+      },
+      "required": [
+        "v",
+        "kind",
+        "id",
+        "ok",
+        "error"
+      ],
+      "additionalProperties": false
+    },
+    "Event": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "kind": {
+              "const": "event"
+            },
+            "seq": {
+              "$ref": "#/$defs/SafeId"
+            },
+            "sessionId": {
+              "$ref": "#/$defs/Handle"
+            },
+            "event": {
+              "const": "operation.finished"
+            },
+            "data": {
+              "$ref": "#/$defs/OperationTerminal"
+            }
+          },
+          "required": [
+            "v",
+            "kind",
+            "seq",
+            "sessionId",
+            "event",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "kind": {
+              "const": "event"
+            },
+            "seq": {
+              "$ref": "#/$defs/SafeId"
+            },
+            "sessionId": {
+              "$ref": "#/$defs/Handle"
+            },
+            "event": {
+              "const": "authoring.output"
+            },
+            "data": {
+              "type": "object",
+              "properties": {
+                "operationId": {
+                  "$ref": "#/$defs/SafeId"
+                },
+                "stream": {
+                  "enum": [
+                    "stdout",
+                    "stderr"
+                  ]
+                },
+                "chunk": {
+                  "$ref": "#/$defs/SafeId"
+                },
+                "bytesBase64": {
+                  "type": "string",
+                  "maxLength": 21848,
+                  "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"
+                }
+              },
+              "required": [
+                "operationId",
+                "stream",
+                "chunk",
+                "bytesBase64"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "kind",
+            "seq",
+            "sessionId",
+            "event",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "kind": {
+              "const": "event"
+            },
+            "seq": {
+              "$ref": "#/$defs/SafeId"
+            },
+            "sessionId": {
+              "$ref": "#/$defs/Handle"
+            },
+            "event": {
+              "const": "build.output"
+            },
+            "data": {
+              "type": "object",
+              "properties": {
+                "operationId": {
+                  "$ref": "#/$defs/SafeId"
+                },
+                "stream": {
+                  "enum": [
+                    "stdout",
+                    "stderr"
+                  ]
+                },
+                "chunk": {
+                  "$ref": "#/$defs/SafeId"
+                },
+                "bytesBase64": {
+                  "type": "string",
+                  "maxLength": 21848,
+                  "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"
+                }
+              },
+              "required": [
+                "operationId",
+                "stream",
+                "chunk",
+                "bytesBase64"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "kind",
+            "seq",
+            "sessionId",
+            "event",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "kind": {
+              "const": "event"
+            },
+            "seq": {
+              "$ref": "#/$defs/SafeId"
+            },
+            "sessionId": {
+              "$ref": "#/$defs/Handle"
+            },
+            "event": {
+              "const": "worker.started"
+            },
+            "data": {
+              "type": "object",
+              "properties": {
+                "workerId": {
+                  "$ref": "#/$defs/Handle"
+                }
+              },
+              "required": [
+                "workerId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "kind",
+            "seq",
+            "sessionId",
+            "event",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "kind": {
+              "const": "event"
+            },
+            "seq": {
+              "$ref": "#/$defs/SafeId"
+            },
+            "sessionId": {
+              "$ref": "#/$defs/Handle"
+            },
+            "event": {
+              "const": "worker.ready"
+            },
+            "data": {
+              "type": "object",
+              "properties": {
+                "workerId": {
+                  "$ref": "#/$defs/Handle"
+                }
+              },
+              "required": [
+                "workerId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "kind",
+            "seq",
+            "sessionId",
+            "event",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "kind": {
+              "const": "event"
+            },
+            "seq": {
+              "$ref": "#/$defs/SafeId"
+            },
+            "sessionId": {
+              "$ref": "#/$defs/Handle"
+            },
+            "event": {
+              "const": "worker.closing"
+            },
+            "data": {
+              "type": "object",
+              "properties": {
+                "workerId": {
+                  "$ref": "#/$defs/Handle"
+                },
+                "reason": {
+                  "enum": [
+                    "normal",
+                    "user-cancel",
+                    "deadline",
+                    "client-failure",
+                    "worker-failure"
+                  ]
+                }
+              },
+              "required": [
+                "workerId",
+                "reason"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "kind",
+            "seq",
+            "sessionId",
+            "event",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "kind": {
+              "const": "event"
+            },
+            "seq": {
+              "$ref": "#/$defs/SafeId"
+            },
+            "sessionId": {
+              "$ref": "#/$defs/Handle"
+            },
+            "event": {
+              "const": "worker.exited"
+            },
+            "data": {
+              "type": "object",
+              "properties": {
+                "workerId": {
+                  "$ref": "#/$defs/Handle"
+                },
+                "reason": {
+                  "enum": [
+                    "normal",
+                    "user-cancel",
+                    "deadline",
+                    "client-failure",
+                    "worker-failure"
+                  ]
+                },
+                "exitCode": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "workerId",
+                "reason"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "kind",
+            "seq",
+            "sessionId",
+            "event",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "kind": {
+              "const": "event"
+            },
+            "seq": {
+              "$ref": "#/$defs/SafeId"
+            },
+            "sessionId": {
+              "$ref": "#/$defs/Handle"
+            },
+            "event": {
+              "const": "session.closed"
+            },
+            "data": {
+              "$ref": "#/$defs/CleanupResult"
+            }
+          },
+          "required": [
+            "v",
+            "kind",
+            "seq",
+            "sessionId",
+            "event",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "kind": {
+              "const": "event"
+            },
+            "seq": {
+              "$ref": "#/$defs/SafeId"
+            },
+            "sessionId": {
+              "$ref": "#/$defs/Handle"
+            },
+            "event": {
+              "const": "agent.updated"
+            },
+            "data": {
+              "type": "object",
+              "properties": {
+                "run": {
+                  "allOf": [
+                    {
+                      "$ref": "#/$defs/HostedRun"
+                    },
+                    {
+                      "properties": {
+                        "phase": {
+                          "not": {
+                            "const": "finished"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "run"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "kind",
+            "seq",
+            "sessionId",
+            "event",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 2
+            },
+            "kind": {
+              "const": "event"
+            },
+            "seq": {
+              "$ref": "#/$defs/SafeId"
+            },
+            "sessionId": {
+              "$ref": "#/$defs/Handle"
+            },
+            "event": {
+              "const": "agent.finished"
+            },
+            "data": {
+              "type": "object",
+              "properties": {
+                "run": {
+                  "allOf": [
+                    {
+                      "$ref": "#/$defs/HostedRun"
+                    },
+                    {
+                      "properties": {
+                        "phase": {
+                          "const": "finished"
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "run"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "kind",
+            "seq",
+            "sessionId",
+            "event",
+            "data"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    }
+  }
+}

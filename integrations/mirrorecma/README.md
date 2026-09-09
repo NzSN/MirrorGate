@@ -1,21 +1,164 @@
 # Trusted MirrorECMA evaluator integration
 
-The accepted [implementation boundary](../../../MirrorECMA/docs/implementation-boundary-design.md)
-makes this optional integration the planned home for Gate-aware evaluation
-composition. MirrorECMA itself keeps generic MBT against caller-supplied
-implementations; the coordinating agent requests authoring directly from Gate.
-The integration will supply a deferred implementation factory/proxy using public
-APIs from both libraries and retain Gate ownership through admission and cleanup.
-Current helpers and smoke commands below are existing behavior, not evidence of
-completed facade extraction or a supported new integration package. See AH8 in
-the [hosting task ledger](../../docs/agent-hosting-tasks.md).
+`mirrorgate-mirrorecma` is the optional, Gate-owned TypeScript integration. Its
+source extraction, prepared/control-v1 provider, hosted-v2 local workflow and
+trusted/public receipts are integrated and verified in the destination. The
+package is private and tested through installed consumption; it is not published.
+Actual Codex authoring, the installed MCP protocol harness, MirrorECMA 2 core/live
+checks and coordinated gates passed. Real outside-Codex MCP registration and the
+complete actual-implementer workflow also passed;
+[final validation](../../docs/managed-workflow-validation.md) records authoritative
+results.
 
-The planned [reusable harness](../../../MirrorECMA/docs/mbt-harness-design.md)
-supports source tests, CLI, and an optional
-[evaluation-service wrapper](../../docs/evaluation-service-design.md) under this
-integration. Applications supply approved suite modules. Service access is a
-whole-evaluation interface, separate from public-port calls to the implementation;
-no service package/endpoint is implemented by the existing smoke wrapper below.
+The integration imports only the public `mirrorecma`, `mirrorgate/control` and
+`mirrorgate/worker` APIs. MirrorECMA owns negotiation, replay, comparisons and
+generic binding lifetime; Gate owns worker admission, physical cleanup and this
+integration. Neither the Gate supervisor nor basic SDK depends on MirrorECMA.
+
+## Local workflow
+
+`evaluateImplementation(plan, options)` owns the complete local composition:
+connect to Gate, start an approved managed author when requested, wait for explicit
+submission, prepare, supply the deferred factory to an ordinary suite, and join
+physical cleanup. It also accepts approved source without authoring and prebuilt
+artifacts. Gate's controller/runtime integration supplies hosting; this package
+does not launch a second agent process or implement another broker.
+
+```ts
+import { evaluateImplementation } from "mirrorgate-mirrorecma";
+
+const outcome = await evaluateImplementation({
+  taskRef: "counter", gate: approvedGateEndpoint,
+  policyId: "counter", runtime: "node-v1",
+  submission: approvedSource, agent: approvedAgentRequest,
+  model: generatedCounterModel,
+  suite: {
+    id: "counter-suite", revision: approvedSuiteRevision,
+    modelRevision: approvedModelRevision,
+    context: { mirror, modelConfig, tracePaths },
+    run: runCounterSuite,
+  },
+}, { signal });
+
+// Full model/failure/source/cleanup evidence remains trusted.
+retainTrustedReceipt(outcome.receipt);
+return outcome.publicResult;
+```
+
+The [workflow contract](WORKFLOW.md) and public declarations define exact inputs,
+ownership, deadlines and bounded disclosure. Model outcome and physical cleanup
+are independent receipt fields; a model pass with unconfirmed cleanup is an
+overall failure. Suite/model revision labels are supplied by the trusted caller;
+they are not authenticated merely by being passed to this function.
+
+For the standard `mirrorgate/hosting-tool`, configure
+`createHostedEvaluationHandler({taskRef: approvedDefinition})` as `onSubmitted`.
+The integration uses the original dedicated owner, rechecks the committed source,
+and explicitly hands back cleanup through the trusted `completeCleanup` callback.
+It neither reconstructs a run handle nor reconnects to adopt a submitted session.
+
+The [installed Counter consumer](examples/counter/README.md) supplies only its
+configuration, generated contract and the same generic suite as MirrorECMA's
+source tests/CLI. Normal evaluation does no client compilation or repository
+packing. The optional [evaluation service](service/README.md) invokes this same
+workflow and publishes only its public result.
+
+## Prepared implementation provider
+
+A trusted host prepares an artifact using the public Gate SDK, retaining the same
+owner connection. It then passes that session and preparation receipt to
+`createPreparedImplementationProvider`. Construction validates model/manifest
+and artifact identities but does not authorize or launch a worker.
+
+```ts
+import { createPreparedImplementationProvider } from "mirrorgate-mirrorecma";
+
+const provider = await createPreparedImplementationProvider({
+  session, prepared, model,
+  policyId: "approved-counter",
+  runtime: "node-v1",
+});
+
+let summary: { status: "passed" | "failed" } = { status: "failed" };
+try {
+  // The application suite accepts a generic AsyncAdapterFactory, independent
+  // of Gate. It registers this factory with verify + require negotiation.
+  await counterSuite(context, provider.factory);
+  summary = { status: "passed" };
+} finally {
+  // In actual application code, supply the evaluated outcome and retain both
+  // its primary failure and this independent trusted cleanup receipt.
+  const cleanup = await provider.close(summary);
+}
+```
+
+The provider also exposes an exact compiled `selection` for direct use with
+MirrorECMA's negotiated report runners. Its factory is single-use and admits the
+worker only after MirrorECMA supplies required-match authority. Only a bounded
+attestation is sent to Gate; private model configuration, transport, iterator,
+expected state and trace coordinates never enter worker calls.
+
+Ownership transfers when provider construction is called, including validation
+failures. `close()` closes the owning session **and its original client**; use a
+dedicated owner connection, not one managing unrelated sessions. It must run even
+when negotiation fails before invoking the factory. No serialized handle,
+reconnect, process adoption, or hosted-control-v2 fields are supported here.
+
+Binding disposal closes the proxy and worker. Final provider cleanup joins that
+disposal and Gate cleanup using an independent bounded budget. It seals further
+admission, checks delayed factory continuations, and reports `confirmed`, `failed`
+or `unconfirmed` separately from model conformance. Cleanup failures and remaining
+resources are trusted evidence, not an agent-visible projection. The local
+workflow and optional service compose this provider without duplicating admission logic.
+
+## Legacy migration
+
+Existing consumers may change their Gate-aware imports to:
+
+```ts
+import {
+  evaluateSandboxed, createSandboxCompiledModel, sandboxDiagnosticFailures,
+} from "mirrorgate-mirrorecma/legacy";
+```
+
+The existing facade plan, author callback, redacted result and bounded diagnostics
+retain their shape. The implementation and manifest-validation/failure tests have
+moved into this package. The destination MirrorECMA 2 cutover removes the old
+Gate-specific source/exports and passes core/live validation. No forwarding
+import from MirrorECMA to this package is introduced. Generic MBT consumers keep
+importing `mirrorecma` alone. The integration peer contract accepts public
+MirrorECMA 1.x/2.x APIs; publication remains separate from verified local delivery.
+
+## Package checks
+
+With compatible local public peer packages and development dependencies installed:
+
+```bash
+npm run build
+npm test
+MIRRORECMA_ROOT=/absolute/path/to/MirrorECMA node scripts/packed-consumer.mjs
+MIRRORECMA_ROOT=/absolute/path/to/MirrorECMA \
+MIRRORS_ROOT=/absolute/path/to/Mirrors \
+MIRRORGATE_NODE_RUNTIME_ROOT=/approved/node-v24.15.0-linux-x64 \
+node scripts/packed-consumer.mjs --sandbox
+# Installed app, hosted/source/prebuilt/CLI and optional HTTP-service checks:
+node scripts/installed-workflow.mjs --service
+```
+
+The packed consumer gate compiles ESM/TypeScript imports using only installed
+package exports. Its sandbox tier uses the generated Counter binding, real
+Mirrors replay and restricted Node workers to check correct/faulty implementations
+through both the prepared provider and `/legacy` facade. A wrong model digest
+is also rejected before any provider worker launches. A denied backend is a
+failure, not a sandbox pass. This is prepared/control-v1 evidence; it does not
+claim managed-agent authoring or optional evaluation-service delivery.
+
+The copied Counter lock and generated binding in `test/fixtures` retain their
+compiler-owned bytes from MirrorECMA's existing fixture. Do not hand-edit generated
+output. The package's focused tests retain manifest bounds, private projection,
+authoring output limits, diagnostic sink bounds, cancellation and failure paths.
+
+## Broader cross-client smoke
 
 This example retains MirrorECMA, generated bindings, full model files, trace
 files, and reports on the evaluator host. Only public shim code, a sanitized
@@ -62,3 +205,5 @@ invariants, provenance, and other non-port fields. The caller must provide a
 verified source descriptor/lock and expected semantic identity. Sanitization
 does not cryptographically authenticate an arbitrary supplied digest or determine
 whether a public field's contents reveal a private fact.
+
+Focused extraction evidence is recorded in [VALIDATION.md](VALIDATION.md).

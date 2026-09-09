@@ -1,0 +1,539 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mirrorgate.dev/control-v2/policy-schema.json",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "mirrorgate.control-policy/v2"
+    },
+    "policies": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,127}$"
+          },
+          "roots": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,127}$"
+                },
+                "path": {
+                  "type": "string",
+                  "pattern": "^/"
+                },
+                "kinds": {
+                  "type": "array",
+                  "items": {
+                    "enum": [
+                      "prebuilt",
+                      "source"
+                    ]
+                  },
+                  "uniqueItems": true,
+                  "minItems": 1
+                },
+                "allowedUids": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "uniqueItems": true,
+                  "minItems": 1
+                }
+              },
+              "required": [
+                "id",
+                "path",
+                "kinds",
+                "allowedUids"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 1
+          },
+          "buildPlans": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,127}$"
+                },
+                "command": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "minItems": 1,
+                  "maxItems": 256
+                },
+                "cwd": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "artifactPath": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "id",
+                "command",
+                "cwd",
+                "artifactPath"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 0
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,127}$"
+                },
+                "command": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "minItems": 1,
+                  "maxItems": 256
+                },
+                "argumentMode": {
+                  "enum": [
+                    "none",
+                    "append"
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "command",
+                "argumentMode"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 0
+          },
+          "runtimes": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "const": "node-v1"
+                    },
+                    "kind": {
+                      "const": "node"
+                    },
+                    "runtimeMounts": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "source": {
+                            "type": "string",
+                            "pattern": "^/"
+                          },
+                          "destination": {
+                            "type": "string",
+                            "pattern": "^/"
+                          }
+                        },
+                        "required": [
+                          "source",
+                          "destination"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "minItems": 1
+                    },
+                    "command": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "minItems": 1,
+                      "maxItems": 256
+                    },
+                    "artifactEntry": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "descriptorSchema": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "adapterId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "targetProfile": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "stateComputerContractVersion": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "nodeShim": {
+                      "type": "object",
+                      "properties": {
+                        "root": {
+                          "type": "string",
+                          "pattern": "^/"
+                        },
+                        "workerPath": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "protocolPath": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": [
+                        "root",
+                        "workerPath",
+                        "protocolPath"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "kind",
+                    "runtimeMounts",
+                    "command",
+                    "artifactEntry",
+                    "descriptorSchema",
+                    "adapterId",
+                    "targetProfile",
+                    "stateComputerContractVersion",
+                    "nodeShim"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "const": "rust-v1"
+                    },
+                    "kind": {
+                      "const": "rust"
+                    },
+                    "runtimeMounts": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "source": {
+                            "type": "string",
+                            "pattern": "^/"
+                          },
+                          "destination": {
+                            "type": "string",
+                            "pattern": "^/"
+                          }
+                        },
+                        "required": [
+                          "source",
+                          "destination"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "minItems": 1
+                    },
+                    "command": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "minItems": 1,
+                      "maxItems": 256
+                    },
+                    "artifactEntry": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "descriptorSchema": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "adapterId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "targetProfile": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "stateComputerContractVersion": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "kind",
+                    "runtimeMounts",
+                    "command",
+                    "artifactEntry",
+                    "descriptorSchema",
+                    "adapterId",
+                    "targetProfile",
+                    "stateComputerContractVersion"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "minItems": 1
+          },
+          "limits": {
+            "type": "object",
+            "properties": {
+              "sessionWallMs": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "executionWallMs": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "commandCpuSeconds": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "addressSpaceBytes": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "uidProcesses": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "openFiles": {
+                "type": "integer",
+                "minimum": 32,
+                "maximum": 9007199254740991
+              },
+              "fileBytes": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "stdoutBytes": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "stderrBytes": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "snapshotFiles": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "snapshotBytes": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "tmpBytes": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "scratchBytes": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "sessionWallMs",
+              "executionWallMs",
+              "commandCpuSeconds",
+              "addressSpaceBytes",
+              "uidProcesses",
+              "openFiles",
+              "fileBytes",
+              "stdoutBytes",
+              "stderrBytes",
+              "snapshotFiles",
+              "snapshotBytes",
+              "tmpBytes",
+              "scratchBytes"
+            ],
+            "additionalProperties": false
+          },
+          "agentProfileIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,127}$"
+            },
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "id",
+          "roots",
+          "buildPlans",
+          "tools",
+          "runtimes",
+          "limits",
+          "agentProfileIds"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "agentProfiles": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/agentProfile"
+      },
+      "minItems": 0
+    }
+  },
+  "required": [
+    "schema",
+    "policies",
+    "agentProfiles"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "agentProfile": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,127}$"
+        },
+        "runtime": {
+          "const": "codex"
+        },
+        "executable": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "version": {
+          "const": "codex-cli 0.153.4"
+        },
+        "model": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,127}$"
+        },
+        "modelCatalog": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "credentialFile": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "auditReceipt": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "auditMaxAgeSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 86400
+        },
+        "credentialRevision": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,127}$"
+        },
+        "limits": {
+          "type": "object",
+          "properties": {
+            "wallMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 300000
+            },
+            "stdoutBytes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1048576
+            },
+            "stderrBytes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1048576
+            },
+            "progressRecords": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 256
+            },
+            "progressBytes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 262144
+            },
+            "progressRecordBytes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 16384
+            }
+          },
+          "required": [
+            "wallMs",
+            "stdoutBytes",
+            "stderrBytes",
+            "progressRecords",
+            "progressBytes",
+            "progressRecordBytes"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "runtime",
+        "executable",
+        "version",
+        "model",
+        "modelCatalog",
+        "credentialFile",
+        "auditReceipt",
+        "auditMaxAgeSeconds",
+        "credentialRevision",
+        "limits"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

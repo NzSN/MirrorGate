@@ -1,0 +1,643 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mirrorgate.dev/schema/evaluation-service-v1.json",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/Request"
+    },
+    {
+      "$ref": "#/$defs/Success"
+    },
+    {
+      "$ref": "#/$defs/Failure"
+    }
+  ],
+  "$defs": {
+    "Handle": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "Reference": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,127}$"
+    },
+    "Integer": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "Limits": {
+      "type": "object",
+      "properties": {
+        "requestBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16384
+        },
+        "responseBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65536
+        },
+        "httpInFlight": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32
+        },
+        "activeRuns": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16
+        },
+        "activeRunsPerCaller": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4
+        },
+        "lifetimeStarts": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4096
+        },
+        "retainedRuns": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 128
+        },
+        "retentionMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 300000
+        },
+        "evaluationMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 300000
+        },
+        "cleanupGraceMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5000
+        },
+        "progressRecords": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32
+        },
+        "progressRecordBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1024
+        },
+        "progressBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16384
+        },
+        "requestsPerMinute": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 600
+        }
+      },
+      "required": [
+        "requestBytes",
+        "responseBytes",
+        "httpInFlight",
+        "activeRuns",
+        "activeRunsPerCaller",
+        "lifetimeStarts",
+        "retainedRuns",
+        "retentionMs",
+        "evaluationMs",
+        "cleanupGraceMs",
+        "progressRecords",
+        "progressRecordBytes",
+        "progressBytes",
+        "requestsPerMinute"
+      ],
+      "additionalProperties": false
+    },
+    "Error": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "enum": [
+            "UNAUTHORIZED",
+            "ARGUMENT_INVALID",
+            "LIMIT_EXCEEDED",
+            "REFERENCE_UNKNOWN",
+            "RUN_UNKNOWN",
+            "RUN_EXPIRED",
+            "START_CONFLICT",
+            "STALE_EPOCH",
+            "SERVICE_UNAVAILABLE"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 128
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "additionalProperties": false
+    },
+    "PublicResult": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "const": "mirrorgate.evaluation/v1"
+        },
+        "runRef": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "status": {
+          "enum": [
+            "passed",
+            "mismatch",
+            "failed",
+            "cancelled",
+            "timedOut"
+          ]
+        },
+        "cleanup": {
+          "enum": [
+            "confirmed",
+            "failed",
+            "unconfirmed"
+          ]
+        },
+        "counts": {
+          "type": "object",
+          "properties": {
+            "acceptedTraces": {
+              "$ref": "#/$defs/Integer"
+            },
+            "acceptedSteps": {
+              "$ref": "#/$defs/Integer"
+            }
+          },
+          "required": [
+            "acceptedTraces",
+            "acceptedSteps"
+          ],
+          "additionalProperties": false
+        },
+        "implementation": {
+          "type": "object",
+          "properties": {
+            "artifactHash": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "sourceHash": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          },
+          "required": [
+            "artifactHash"
+          ],
+          "additionalProperties": false
+        },
+        "failureStage": {
+          "enum": [
+            "configuration",
+            "connect",
+            "open",
+            "authoring",
+            "prepare",
+            "provider",
+            "evaluate"
+          ]
+        }
+      },
+      "required": [
+        "schema",
+        "runRef",
+        "status",
+        "cleanup"
+      ],
+      "additionalProperties": false
+    },
+    "ProgressRecord": {
+      "type": "object",
+      "properties": {
+        "seq": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 1024
+        }
+      },
+      "required": [
+        "seq",
+        "message"
+      ],
+      "additionalProperties": false
+    },
+    "Progress": {
+      "type": "object",
+      "properties": {
+        "firstSeq": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "nextSeq": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "records": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/ProgressRecord"
+          }
+        }
+      },
+      "required": [
+        "firstSeq",
+        "nextSeq",
+        "truncated",
+        "records"
+      ],
+      "additionalProperties": false
+    },
+    "WorkflowFailure": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "enum": [
+            "WORKFLOW_FAILED",
+            "WORKFLOW_UNSETTLED"
+          ]
+        },
+        "cleanup": {
+          "const": "unconfirmed"
+        }
+      },
+      "required": [
+        "code",
+        "cleanup"
+      ],
+      "additionalProperties": false
+    },
+    "Run": {
+      "type": "object",
+      "properties": {
+        "runId": {
+          "$ref": "#/$defs/Handle"
+        },
+        "startKey": {
+          "$ref": "#/$defs/Handle"
+        },
+        "suiteRef": {
+          "$ref": "#/$defs/Reference"
+        },
+        "implementationRef": {
+          "$ref": "#/$defs/Reference"
+        },
+        "phase": {
+          "enum": [
+            "queued",
+            "running",
+            "cancelling",
+            "finished",
+            "unconfirmed"
+          ]
+        },
+        "progress": {
+          "$ref": "#/$defs/Progress"
+        },
+        "result": {
+          "$ref": "#/$defs/PublicResult"
+        },
+        "failure": {
+          "$ref": "#/$defs/WorkflowFailure"
+        }
+      },
+      "required": [
+        "runId",
+        "startKey",
+        "suiteRef",
+        "implementationRef",
+        "phase",
+        "progress"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "phase": {
+                "const": "finished"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "result"
+            ],
+            "not": {
+              "required": [
+                "failure"
+              ]
+            }
+          },
+          "else": {
+            "not": {
+              "required": [
+                "result"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "phase": {
+                "const": "unconfirmed"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "failure"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "failure"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "Request": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 1
+            },
+            "requestId": {
+              "$ref": "#/$defs/Handle"
+            },
+            "op": {
+              "const": "hello"
+            },
+            "args": {
+              "type": "object",
+              "properties": {},
+              "required": [],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "requestId",
+            "op",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 1
+            },
+            "requestId": {
+              "$ref": "#/$defs/Handle"
+            },
+            "op": {
+              "const": "start"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "serviceEpoch": {
+                  "$ref": "#/$defs/Handle"
+                },
+                "startKey": {
+                  "$ref": "#/$defs/Handle"
+                },
+                "suiteRef": {
+                  "$ref": "#/$defs/Reference"
+                },
+                "implementationRef": {
+                  "$ref": "#/$defs/Reference"
+                }
+              },
+              "required": [
+                "serviceEpoch",
+                "startKey",
+                "suiteRef",
+                "implementationRef"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "requestId",
+            "op",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 1
+            },
+            "requestId": {
+              "$ref": "#/$defs/Handle"
+            },
+            "op": {
+              "const": "cancel"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "serviceEpoch": {
+                  "$ref": "#/$defs/Handle"
+                },
+                "runId": {
+                  "$ref": "#/$defs/Handle"
+                }
+              },
+              "required": [
+                "serviceEpoch",
+                "runId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "v",
+            "requestId",
+            "op",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "const": 1
+            },
+            "requestId": {
+              "$ref": "#/$defs/Handle"
+            },
+            "op": {
+              "const": "get"
+            },
+            "args": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "serviceEpoch": {
+                      "$ref": "#/$defs/Handle"
+                    },
+                    "runId": {
+                      "$ref": "#/$defs/Handle"
+                    }
+                  },
+                  "required": [
+                    "serviceEpoch",
+                    "runId"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "serviceEpoch": {
+                      "$ref": "#/$defs/Handle"
+                    },
+                    "startKey": {
+                      "$ref": "#/$defs/Handle"
+                    }
+                  },
+                  "required": [
+                    "serviceEpoch",
+                    "startKey"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          },
+          "required": [
+            "v",
+            "requestId",
+            "op",
+            "args"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "Success": {
+      "type": "object",
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/Handle"
+        },
+        "ok": {
+          "const": true
+        },
+        "result": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "serviceEpoch": {
+                  "$ref": "#/$defs/Handle"
+                },
+                "limits": {
+                  "$ref": "#/$defs/Limits"
+                }
+              },
+              "required": [
+                "serviceEpoch",
+                "limits"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "run": {
+                  "$ref": "#/$defs/Run"
+                }
+              },
+              "required": [
+                "run"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        }
+      },
+      "required": [
+        "v",
+        "requestId",
+        "ok",
+        "result"
+      ],
+      "additionalProperties": false
+    },
+    "Failure": {
+      "type": "object",
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "requestId": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Handle"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ok": {
+          "const": false
+        },
+        "error": {
+          "$ref": "#/$defs/Error"
+        }
+      },
+      "required": [
+        "v",
+        "requestId",
+        "ok",
+        "error"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

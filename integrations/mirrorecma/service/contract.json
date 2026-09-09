@@ -1,0 +1,26 @@
+{
+  "schema": "mirrorgate.evaluation-service-contract/v1",
+  "version": 1,
+  "transport": {"protocol":"http","hosts":["127.0.0.1","::1"],"method":"POST","path":"/v1/evaluations","contentType":"application/json","authentication":"Bearer-64-lowercase-hex","requestTimeoutMs":5000},
+  "operations": {
+    "hello": {"args":[],"result":["serviceEpoch","limits"]},
+    "start": {"args":["serviceEpoch","startKey","suiteRef","implementationRef"],"result":["run"]},
+    "get": {"args":["serviceEpoch","runId|startKey"],"result":["run"]},
+    "cancel": {"args":["serviceEpoch","runId"],"result":["run"]}
+  },
+  "records": {
+    "Request":["v","requestId","op","args"],
+    "Success":["v","requestId","ok","result"],
+    "Failure":["v","requestId","ok","error"],
+    "Error":["code","message"],
+    "Run":["runId","startKey","suiteRef","implementationRef","phase","progress","result?","failure?"],
+    "Progress":["firstSeq","nextSeq","truncated","records"],
+    "ProgressRecord":["seq","message"],
+    "WorkflowFailure":["code","cleanup"]
+  },
+  "phases":["queued","running","cancelling","finished","unconfirmed"],
+  "errors":["UNAUTHORIZED","ARGUMENT_INVALID","LIMIT_EXCEEDED","REFERENCE_UNKNOWN","RUN_UNKNOWN","RUN_EXPIRED","START_CONFLICT","STALE_EPOCH","SERVICE_UNAVAILABLE"],
+  "limits":{"requestBytes":16384,"responseBytes":65536,"httpInFlight":32,"activeRuns":16,"activeRunsPerCaller":4,"lifetimeStarts":4096,"retainedRuns":128,"retentionMs":300000,"evaluationMs":300000,"cleanupGraceMs":5000,"progressRecords":32,"progressRecordBytes":1024,"progressBytes":16384,"requestsPerMinute":600},
+  "jsonLimits":{"depth":16,"nodes":2048},
+  "ownership":{"run":"caller+serviceEpoch","deduplication":"caller+serviceEpoch+startKey","disconnect":"retain-until-deadline","expiredStart":"tombstone-no-reexecution","gate":"R3-workflow-only"}
+}

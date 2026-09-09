@@ -6,17 +6,41 @@ The Linux/Bubblewrap supervisor, Node/Rust workers, protocol, conformance suite,
 and optional evaluator integration are implemented and locally tested. Guarantees
 are limited to the configured backend and documented agent-host integration.
 
-The 2026-09-09 ownership decision moves trusted agent hosting into MirrorGate as
-an optional module. Agent launch/configuration still lives in external hosts
-and experiment helpers; the managed hosting interface and lifecycle are planned.
+The 2026-09-09 implementation places managed hosting, native v2 access, the
+standard outside-agent tool and the external MBT workflow in Gate. The optional
+loopback HTTP service uses that same workflow. Destination and coordinated gates
+passed; the [validation report](managed-workflow-validation.md) records exact
+evidence. Both the actual-implementer MCP protocol harness and real outside-Codex
+framework registration/dispatch passed. No release or hosted-CI claim is implied.
+
+## Implementation and acceptance status
+
+| Layer | Status / authoritative reference |
+| --- | --- |
+| Control v1, native SDKs, restricted tool/build/worker execution | Existing experimental profile remains compatible; [compatibility](compatibility.md) records boundaries |
+| Control v2 and managed implementer | Implemented; [v2 contract](agent-hosting-control-v2.md), actual Codex audit and fresh author through the installed MCP protocol harness |
+| Coordinator-facing hosting tool | Installed MCP protocol harness and real outer/inner Codex framework workflow passed (AH11.2) |
+| MirrorECMA core decoupling and shared harness | External Gate package and MirrorECMA 2 cutover verified in destination/core/live/interop gates |
+| Optional evaluation-service proxy | [Loopback HTTP v1](evaluation-service-contract-v1.md), caller authentication and same-suite real Gate/Mirrors checks; no remote/TLS profile |
+
+The coordinator talks directly to Gate. MirrorECMA's target responsibility stays
+MBT against a supplied implementation; Gate owns its trusted integration and
+supported local evaluation composition. Separate packaging does not transfer
+that responsibility to applications. Source-test/CLI suite reuse does not require the optional service.
+Mirrors' existing model protocol and compiler remain unchanged.
+
+## Documents
 
 | Document | Read when working on |
 | --- | --- |
 | [Architecture](architecture.md) | Repository responsibilities, trusted evaluation, shared infrastructure, and language shims |
+| [Managed workflow](managed-workflow-design.md) | Gate-owned R1 agent hosting, R2 sandbox/artifacts, and R3 trusted local MBT integration; caller inputs and task mapping |
 | [Agent hosting design](agent-hosting-design.md) | Direct coordinator-to-Gate authoring, hosted implementer, external MBT integration, and restricted lifecycle |
 | [Agent hosting tasks](agent-hosting-tasks.md) | Implementation assignments, dependencies, contract prerequisites, owned paths, and acceptance evidence |
-| [Hosting contract decisions](agent-hosting-contract-decisions.md) | Reviewed AH1.1 compatibility/lifecycle decisions; schema freeze and implementation remain queued |
-| [Evaluation-service design](evaluation-service-design.md) | Reusable source-test harness, service versus implementation proxies, run ownership, suite integrity, and optional service delivery |
+| [Hosting contract decisions](agent-hosting-contract-decisions.md) | Historical AH1.1 decisions underlying the implemented v2 contract |
+| [Agent hosting control v2](agent-hosting-control-v2.md) | Frozen hosting records, bootstrap compatibility, run/source/cleanup lifecycle and shared fixtures |
+| [Evaluation-service design](evaluation-service-design.md) | Reusable source-test harness, service versus implementation proxies, run ownership and local evidence |
+| [Evaluation service v1](evaluation-service-contract-v1.md) | Authenticated loopback HTTP, closed records, deduplication, retention, cancellation and public results |
 | [Orchestration control v1](https://github.com/NzSN/MirrorGate/blob/main/docs/orchestration-control-v1.md) | Shared session workflow, control framing, owner-bound handles, managed worker transport, and cleanup completion for client-guide section 13 |
 | [Control policy v1](control-policy-v1.md) | Closed operator catalog for approved roots, build/tool commands, runtime launchers, attestation identities, and limit ceilings |
 | [Control usage](https://github.com/NzSN/MirrorGate/blob/main/docs/orchestration-control-usage.md) | Operator policy, owned/attached startup, preparation, authorization, native SDKs, and cleanup |
@@ -43,11 +67,12 @@ The central decisions are:
 - Share supervisor policy mechanisms, protocol semantics, and conformance
   fixtures across languages. Use small language-specific runtime shims.
 - Keep MirrorGate independent of MirrorECMA internals. MirrorECMA is the first
-  proposed evaluator integration, not a required implementation language.
+  supported local evaluator integration, not a required implementation language.
 - Treat isolation and observation fidelity as separate requirements.
 - Own reusable agent hosting in MirrorGate, with runtime configuration behind
   shared control; retain task/public-context approval and private evaluation
-  with the trusted caller. This ownership change is not implemented.
+  with the trusted caller. The controller and external integration implement this
+  ownership split.
 - Supply the standard outside-agent hosting-tool adapter from MirrorGate;
   applications configure and register it in their agent framework.
 

@@ -28,7 +28,7 @@ class ServerTests(unittest.TestCase):
         self.assertTrue(replies[0]["ok"]); self.assertEqual(replies[1]["error"]["code"],"ARGUMENT_INVALID")
 
     def test_handshake_failure_is_structured_then_terminal(self):
-        hello={"v":1,"kind":"request","id":1,"op":"hello","args":{"controlVersions":[2],"requiredCapabilities":[]}}
+        hello={"v":1,"kind":"request","id":1,"op":"hello","args":{"controlVersions":[3],"requiredCapabilities":[]}}
         later={"v":1,"kind":"request","id":2,"op":"hello","args":{"controlVersions":[1],"requiredCapabilities":[]}}
         writer=io.BytesIO();serve_stream(io.BytesIO((json.dumps(hello)+"\n"+json.dumps(later)+"\n").encode()),writer,Backend(),principal_uid=os.geteuid(),connection_mode="stdio")
         replies=writer.getvalue().splitlines();self.assertEqual(len(replies),1)

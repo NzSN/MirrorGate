@@ -1,0 +1,19 @@
+{
+  "name": "mirrorgate-counter-example",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node run.mjs"
+  },
+  "dependencies": {
+    "mirrorecma": "^1.0.0 || ^2.0.0",
+    "mirrorgate": "0.1.0",
+    "mirrorgate-mirrorecma": "0.1.0"
+  },
+  "devDependencies": {
+    "typescript": "6.0.3",
+    "@types/node": "^22.19.19"
+  }
+}
