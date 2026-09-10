@@ -1,7 +1,7 @@
 # Linux bubblewrap profile
 
 For a request-by-request explanation with source pointers, read the
-[sandbox design walkthrough](https://github.com/NzSN/MirrorGate/blob/main/docs/sandbox-design.md). This guide records the backend's
+[sandbox design walkthrough](design.md). This guide records the backend's
 operational requirements and limits.
 
 MirrorGate's first supervisor uses Python 3.12 and rootless bubblewrap 0.9 or
@@ -14,7 +14,7 @@ exposes session construction, CLI flags, runtime mounts, or policy replacement.
 
 | Profile | Submission mount | Writable resources |
 | --- | --- | --- |
-| authoring | approved workspace at `/workspace` | workspace, private `/tmp`, `/scratch` |
+| authoring | approved source or materialized source view at `/workspace` | workspace, private `/tmp`, `/scratch` |
 | build | frozen source at `/source` | supervisor-owned `/output`, private `/tmp`, `/scratch` |
 | execution | frozen artifact at `/artifact` | private `/tmp`, `/scratch` |
 
@@ -26,6 +26,12 @@ relative names, and executable flags determine the SHA-256 identity. A snapshot
 is distinct from the live authoring tree and mounted read-only. The trusted
 controller must stop concurrent writers for a coherent multi-file submission;
 copying does not create an atomic transaction across a live directory tree.
+
+Policy-v2 filtered roots materialize exact included files/directories before
+launch. The allowlist is operator-owned; Bubblewrap receives only the resulting
+workspace and therefore never needs ignore-file semantics. Selection uses the
+same link, mutation, count, byte, depth, and path safeguards as snapshot input.
+A mode-`0700` workspace root is pinned before Gate creates the session directory.
 
 The operator approves runtime mounts. The initial `system_runtime_mounts()`
 profile exposes host `/usr` read-only: operators must ensure that this approved
@@ -61,7 +67,9 @@ before forced cleanup. Batch `run()` and authoring/build CLI stdin completion
 allow the command to finish within its wall deadline.
 
 Normal completion, cancellation, and timeout remove supervisor-owned host
-snapshots on session close. Abruptly killing the supervisor still terminates
+snapshots on session close. Filtered no-author, failed, and unsubmitted views are
+also removed. A committed or prepared authoring view is intentional operator
+output and remains below its configured workspace root for trusted promotion. Abruptly killing the supervisor still terminates
 worker processes and releases namespace mounts, but can leave its public
 snapshot directory in the host temporary directory. Operators must remove
 abandoned directories after establishing that the owning controller has exited;

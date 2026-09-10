@@ -135,8 +135,24 @@ context. This is dated local application evidence, not a release claim.
 The run exposed additional application glue around build-mount discovery,
 native collection types, immutable repairs, post-disconnect cleanup evidence,
 receipt persistence, and offline setup. The proposed work and acceptance
-boundaries are recorded in [restricted workflow follow-ups](restricted-workflow-followups.md);
+boundaries are recorded in [restricted workflow follow-ups](sandbox/restricted-workflow-followups.md);
 none of G1-G7 is claimed implemented by this validation.
+
+## Filtered source-view acceptance
+
+On 2026-09-10 the policy-v2 filtered-source implementation passed 76 focused
+policy/materializer/backend tests and four real Bubblewrap cases. The real
+sandbox exposed only selected application files, denied the repository root and
+`.mirrors/private`, kept authoring mutations out of the repository, retained a
+committed authored view, removed a no-author view, and returned one matching
+domain-separated source hash from submission and preparation.
+
+The complete required-backend aggregate then passed: Python 239/239, Node
+221/221 plus 3/3 integration tests, CTest 3/3 plus real C++ controller scenarios,
+Rust 15/15, and Node/Rust sandbox conformance and shared lifecycle cases. The
+pinned tools were Node 24.15.0 and Rust 1.96.0. The source-view policy, receipt
+formula, failure rules, and independent review fixes are recorded in the
+[source-view plan](sandbox/source-views-plan.md#completion-evidence).
 
 ## Supported scope
 

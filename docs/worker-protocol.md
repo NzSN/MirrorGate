@@ -88,4 +88,4 @@ The reference corpus is protocol acceptance evidence; actual sandbox-denial
 checks provide separate isolation evidence. Neither proves observation fidelity.
 
 Related: [v1 contract](protocol-v1.md), [architecture](architecture.md),
-[isolation](blind-validation.md), and [implementation plan](implementation-plan.md).
+[isolation](sandbox/blind-validation.md), and [implementation plan](implementation-plan.md).

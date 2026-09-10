@@ -82,7 +82,7 @@ try {
 `supervisor` is trusted configuration, not a submission field. Bundle the
 public worker shim, `sdk/node` codecs, adapter, manifest, and required application
 files into the frozen artifact. Mount that public artifact through the
-[supervisor](linux-bubblewrap.md); do not mount an evaluator checkout containing
+[supervisor](sandbox/linux-bubblewrap.md); do not mount an evaluator checkout containing
 private data merely to make an import path convenient.
 
 `invoke` and `observe` accept `{signal, timeoutMs}`. Default operation timeout is

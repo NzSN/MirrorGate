@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+import hashlib
+import json
 import os
 from pathlib import Path, PurePosixPath
 import secrets
@@ -21,11 +23,28 @@ from .control_policy import (CATALOG_ID, BuildPlan, ControlLimits,
 from .policy import AdmissionError, ToolRequest, TrustedConfig
 from .protocol import MAX_MANIFEST_BYTES, _parse_json, validate_manifest
 from .sandbox import GateSession, SandboxProcess
+from .source_view import (SourceViewCleanupError, SourceViewMaterialization,
+                          SourceViewPolicy, materialize_source_view)
 from .worker_broker import BrokerError, WorkerReservation
 
 
 OutputCallback = Callable[[str, bytes], None]
 WorkerEventCallback = Callable[[str, dict[str, Any]], None]
+
+FILTERED_SOURCE_HASH_DOMAIN = b"mirrorgate.filtered-source/v1"
+SOURCE_VIEW_RECEIPT_SCHEMA = "mirrorgate.source-view-receipt/v1"
+
+
+def filtered_source_hash(source_view_id: str, selector_sha256: str,
+                         selected_manifest_sha256: str, source_snapshot_sha256: str) -> str:
+    """Domain-separated identity binding a selection to one frozen snapshot."""
+    canonical = json.dumps({
+        "sourceViewId": source_view_id,
+        "selectorSha256": selector_sha256,
+        "selectedManifestSha256": selected_manifest_sha256,
+        "sourceSnapshotSha256": source_snapshot_sha256,
+    }, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    return hashlib.sha256(FILTERED_SOURCE_HASH_DOMAIN + b"\x00" + canonical).hexdigest()
 
 
 class BackendError(RuntimeError):
@@ -85,6 +104,28 @@ class CleanupResult:
     cleanup_mode: str | None = None
 
 
+@dataclass(frozen=True)
+class SourceViewBinding:
+    """Session-fixed selection identity for a filtered approved root."""
+
+    source_view_id: str
+    policy: SourceViewPolicy
+    selected_manifest_sha256: str
+    selected_manifest: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class SourceViewReceipt:
+    """Trusted provenance retained for one filtered source commitment."""
+
+    schema: str
+    source_view_id: str
+    selector_sha256: str
+    selected_manifest_sha256: str
+    source_snapshot_sha256: str
+    source_hash: str
+
+
 @dataclass
 class BackendSession:
     owner: BackendOwner
@@ -129,9 +170,13 @@ class BackendSession:
     prepared: PreparedBackend | None = None
     authorization: AdmissionLease | None = None
     reservation: WorkerReservation | None = None
+    source_view: SourceViewBinding | None = None
+    source_view_receipt: SourceViewReceipt | None = None
+    source_view_path: Path | None = None
+    source_view_retained: bool = False
 
 
-def _submission(value: Any, policy: ControlPolicy, uid: int) -> tuple[str, Path, BuildPlan | None, bool]:
+def _submission(value: Any, policy: ControlPolicy, uid: int) -> tuple[str, str, Path, BuildPlan | None, bool]:
     if type(value) is not dict or value.get("kind") not in ("prebuilt", "source"):
         raise AdmissionError("submission must be prebuilt or source")
     kind = value["kind"]
@@ -146,7 +191,7 @@ def _submission(value: Any, policy: ControlPolicy, uid: int) -> tuple[str, Path,
         raise AdmissionError("input root is not approved")
     path = policy.roots[root_id].resolve(uid, input_ref["relativePath"], kind)
     if kind == "prebuilt":
-        return kind, path, None, False
+        return kind, root_id, path, None, False
     if type(value["authoring"]) is not bool:
         raise AdmissionError("source authoring flag must be boolean")
     build_id = value["buildPlanId"]
@@ -154,7 +199,53 @@ def _submission(value: Any, policy: ControlPolicy, uid: int) -> tuple[str, Path,
         raise AdmissionError("build plan is not approved")
     if not path.is_dir():
         raise AdmissionError("source submission input must be a directory")
-    return kind, path, policy.build_plans[build_id], value["authoring"]
+    return kind, root_id, path, policy.build_plans[build_id], value["authoring"]
+
+
+def _source_view_destination(policy: SourceViewPolicy, owner: BackendOwner) -> Path:
+    """Deterministic operator-visible destination for one session's staged view."""
+    session_id = owner.session_id
+    try:
+        encoded = session_id.encode("utf-8") if type(session_id) is str else b""
+    except UnicodeError as exc:
+        raise BackendError("POLICY_DENIED", "policy",
+                           "source view session identity is invalid") from exc
+    if (type(session_id) is not str or not 1 <= len(encoded) <= 128
+            or "/" in session_id or "\0" in session_id):
+        raise BackendError("POLICY_DENIED", "policy", "source view session identity is invalid")
+    return Path(policy.workspace_root) / ("session-" + session_id)
+
+
+def _materialize_source_view(policy: SourceViewPolicy, source: Path, destination: Path,
+                             limits: ControlLimits) -> SourceViewMaterialization:
+    try:
+        return materialize_source_view(source, destination, policy,
+                                       max_files=limits.snapshot_files,
+                                       max_bytes=limits.snapshot_bytes)
+    except SourceViewCleanupError:
+        raise
+    except Exception as exc:
+        raise BackendError("POLICY_DENIED", "policy", "source view materialization failed") from exc
+
+
+def _bind_source_hash(state: BackendSession, snapshot_sha256: str) -> str:
+    binding = state.source_view
+    if binding is None:
+        return snapshot_sha256
+    source_hash = filtered_source_hash(binding.source_view_id, binding.policy.selector_sha256,
+                                       binding.selected_manifest_sha256, snapshot_sha256)
+    receipt = SourceViewReceipt(SOURCE_VIEW_RECEIPT_SCHEMA, binding.source_view_id,
+                                binding.policy.selector_sha256, binding.selected_manifest_sha256,
+                                snapshot_sha256, source_hash)
+    with state.lock:
+        existing = state.source_view_receipt
+        if existing is not None:
+            if existing.source_snapshot_sha256 != snapshot_sha256:
+                raise BackendError("PREPARATION_FAILED", "prepare",
+                                   "source view snapshot identity changed after commitment")
+            return existing.source_hash
+        state.source_view_receipt = receipt
+    return source_hash
 
 
 def _safe_file(root: Path, relative: str) -> Path:
@@ -231,7 +322,19 @@ class ControlBackend:
         self._store = FrozenStore(self._owned / "snapshots")
         self._lock = threading.RLock()
         self._sessions: dict[BackendOwner, BackendSession | None] = {}
+        self._pending_source_views: set[Path] = set()
         self._probe_result: tuple[bool, str | None] | None = None
+
+    def _remove_source_view(self, path: Path) -> None:
+        try:
+            remove_snapshot(path)
+        except BaseException:
+            with self._lock:
+                self._pending_source_views.add(path)
+            raise
+        else:
+            with self._lock:
+                self._pending_source_views.discard(path)
 
     def _probe_backend(self) -> tuple[bool, str | None]:
         with self._lock:
@@ -263,11 +366,14 @@ class ControlBackend:
         has_authoring = any(policy.tools and policy.build_plans
                             and any("source" in root.kinds for root in policy.roots.values())
                             for policy in policies)
+        has_source_view = any(root.source_view is not None
+                              for policy in policies for root in policy.roots.values())
         ids = {
             "control.local-stdio-v1": connection_mode == "stdio",
             "control.local-unix-v1": connection_mode == "unix",
             "submission.prebuilt-v1": has_prebuilt,
             "submission.source-build-v1": has_source,
+            "submission.source-view-v1": has_source_view,
             "authoring.tools-v1": has_authoring,
             "execution.compiled-verify-v1": has_node or has_rust,
             "worker.managed-unix-v1": sys.platform == "linux",
@@ -373,6 +479,7 @@ class ControlBackend:
         state: BackendSession | None = None
         allocated_leases: list[FrozenLease] = []
         session_owned = self._owned / ("session-" + secrets.token_hex(16))
+        staged_view: Path | None = None
         try:
             if owner.principal_uid != os.getuid():
                 raise AdmissionError("control principal UID is not admitted by this local backend")
@@ -381,11 +488,27 @@ class ControlBackend:
             if type(runtime) is not str or runtime not in policy.runtimes:
                 raise AdmissionError("requested runtime is not approved")
             runtime_plan = policy.runtimes[runtime]
-            kind, input_path, build_plan, authoring = _submission(submission, policy, owner.principal_uid)
+            kind, root_id, input_path, build_plan, authoring = _submission(submission, policy, owner.principal_uid)
             if type(manifest_bytes) is not bytes or len(manifest_bytes) > MAX_MANIFEST_BYTES:
                 raise AdmissionError("manifestJson exceeds the public manifest byte limit")
             manifest = validate_manifest(_parse_json(manifest_bytes))
             session_owned.mkdir(mode=0o700)
+            source_view = None
+            root_view = policy.roots[root_id].source_view
+            if kind == "source" and root_view is not None:
+                try:
+                    materialized = _materialize_source_view(
+                        root_view, input_path, _source_view_destination(root_view, owner), limits)
+                except SourceViewCleanupError as cleanup:
+                    with self._lock:
+                        self._pending_source_views.add(cleanup.path)
+                    raise BackendError("CLEANUP_FAILED", "cleanup",
+                                       "source view materialization rollback failed") from cleanup
+                staged_view = materialized.path
+                input_path = staged_view
+                source_view = SourceViewBinding(root_id, root_view,
+                                                materialized.selected_manifest_sha256,
+                                                tuple(materialized.manifest))
             manifest_lease = _freeze_manifest(self._store, owner, manifest_bytes, session_owned, limits)
             allocated_leases.append(manifest_lease)
             shim_lease = None
@@ -400,7 +523,8 @@ class ControlBackend:
                 submission_kind=kind, input_path=input_path, build_plan=build_plan,
                 authoring_enabled=authoring, manifest_bytes=manifest_bytes,
                 semantic_digest=manifest["interfaceDigest"], manifest_lease=manifest_lease,
-                node_shim_lease=shim_lease, owned=session_owned,
+                node_shim_lease=shim_lease, owned=session_owned, source_view=source_view,
+                source_view_path=staged_view,
                 deadline=time.monotonic() + limits.session_wall_ms / 1000,
                 on_deadline=on_deadline,
             )
@@ -420,9 +544,26 @@ class ControlBackend:
                         lease.close(owner)
                     except BaseException:
                         pass
-                remove_snapshot(session_owned)
-                with self._lock:
-                    self._sessions.pop(owner, None)
+                rollback_failure = None
+                # Only a destination this call successfully materialized is
+                # removed; a preexisting collision is never deleted.
+                if staged_view is not None:
+                    try:
+                        self._remove_source_view(staged_view)
+                    except BaseException as cleanup:
+                        rollback_failure = cleanup
+                try:
+                    remove_snapshot(session_owned)
+                except BaseException as cleanup:
+                    rollback_failure = rollback_failure or cleanup
+                finally:
+                    # The owner slot is released before the failure is mapped;
+                    # pending view cleanup remains owned by backend.close().
+                    with self._lock:
+                        self._sessions.pop(owner, None)
+                if rollback_failure is not None:
+                    raise BackendError("CLEANUP_FAILED", "cleanup",
+                                       "source view session rollback failed") from rollback_failure
             if isinstance(exc, BackendError):
                 raise
             raise BackendError("POLICY_DENIED", "policy", str(exc)) from exc
@@ -599,7 +740,8 @@ class ControlBackend:
                     raise BackendError("DEADLINE_EXCEEDED", "authoring", "source submission exceeded its deadline")
                 if state.closing or cancel_event.is_set() or state.cleanup_event.is_set():
                     raise BackendError("CANCELLED", "authoring", "source submission was cancelled")
-                submission = {"submissionId": secrets.token_hex(16), "sourceHash": provisional.digest,
+                submission = {"submissionId": secrets.token_hex(16),
+                              "sourceHash": _bind_source_hash(state, provisional.digest),
                               "sourceRevision": 1}
                 state.source_lease = provisional
                 state.submission = submission
@@ -691,7 +833,7 @@ class ControlBackend:
                 artifact = self._store.freeze(state.owner, artifact_path,
                                               max_files=state.limits.snapshot_files,
                                               max_bytes=state.limits.snapshot_bytes)
-                source_hash = source.digest
+                source_hash = _bind_source_hash(state, source.digest)
             with state.lock:
                 cancelled = state.closing or cancel_event.is_set() or state.cleanup_event.is_set()
                 if not cancelled:
@@ -954,6 +1096,22 @@ class ControlBackend:
                 except BaseException as exc:
                     failures.append(f"{name} cleanup failed: {exc}")
                     remaining.append(name)
+        view_path = state.source_view_path
+        if view_path is not None:
+            with state.lock:
+                # A committed or prepared authored view is intentional operator
+                # output; failed, unsubmitted, and no-author views are reclaimed
+                # with the session.
+                state.source_view_retained = (
+                    state.authoring_enabled
+                    and (state.submission is not None or state.prepared is not None))
+                retained = state.source_view_retained
+            if not retained:
+                try:
+                    self._remove_source_view(view_path)
+                except BaseException:
+                    failures.append("source view cleanup failed")
+                    remaining.append("source-view")
         try:
             remove_snapshot(state.owned)
         except BaseException as exc:
@@ -982,11 +1140,25 @@ class ControlBackend:
             sessions = [state for state in self._sessions.values() if state is not None]
         for state in sessions:
             result = self.cleanup_session(state, reason="client-failure", cancel_event=threading.Event())
+            if "source-view" in result.remaining_resources:
+                # A transient view unlink failure is retryable within this one bounded
+                # backend close, even if another resource also remains. Report the final
+                # census, not the first attempt after the view has been removed.
+                result = self.cleanup_session(
+                    state, reason="client-failure", cancel_event=threading.Event())
             failures.extend(result.failures)
             physical_remaining.extend(result.remaining_resources)
             if not result.remaining_resources:
                 with self._lock:
                     self._sessions.pop(state.owner, None)
+        with self._lock:
+            pending_views = tuple(self._pending_source_views)
+        for path in pending_views:
+            try:
+                self._remove_source_view(path)
+            except BaseException as exc:
+                failures.append(f"source view cleanup failed: {exc}")
+                physical_remaining.append("source-view")
         store_failures = self._store.close(timeout=self.teardown_timeout_ms / 1000)
         failures.extend(store_failures)
         if self._store.pending_removals:

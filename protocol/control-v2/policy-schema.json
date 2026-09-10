@@ -47,6 +47,34 @@
                   },
                   "uniqueItems": true,
                   "minItems": 1
+                },
+                "sourceView": {
+                  "type": "object",
+                  "properties": {
+                    "schema": {
+                      "const": "mirrorgate.source-view/v1"
+                    },
+                    "workspaceRoot": {
+                      "type": "string",
+                      "pattern": "^/"
+                    },
+                    "includePaths": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "minItems": 1,
+                      "maxItems": 1024,
+                      "uniqueItems": true
+                    }
+                  },
+                  "required": [
+                    "schema",
+                    "workspaceRoot",
+                    "includePaths"
+                  ],
+                  "additionalProperties": false
                 }
               },
               "required": [
@@ -55,7 +83,25 @@
                 "kinds",
                 "allowedUids"
               ],
-              "additionalProperties": false
+              "additionalProperties": false,
+              "allOf": [
+                {
+                  "if": {
+                    "required": [
+                      "sourceView"
+                    ]
+                  },
+                  "then": {
+                    "properties": {
+                      "kinds": {
+                        "const": [
+                          "source"
+                        ]
+                      }
+                    }
+                  }
+                }
+              ]
             },
             "minItems": 1
           },

@@ -16,6 +16,7 @@ import stat
 from typing import Any
 
 from .policy import AdmissionError, Limits, RuntimeMount, checked_directory
+from .source_view import SourceViewPolicy
 
 
 CATALOG_SCHEMA = "mirrorgate.control-policy/v1"
@@ -172,10 +173,16 @@ class ApprovedRoot:
     kinds: frozenset[str]
     allowed_uids: frozenset[int]
     identity: tuple[int, int]
+    source_view: SourceViewPolicy | None = None
 
     @classmethod
-    def parse(cls, value: Any) -> "ApprovedRoot":
-        raw = _object(value, {"id", "path", "kinds", "allowedUids"}, "approved root")
+    def parse(cls, value: Any, *, allow_source_view: bool = False) -> "ApprovedRoot":
+        expected = {"id", "path", "kinds", "allowedUids"}
+        if type(value) is dict and "sourceView" in value:
+            if not allow_source_view:
+                raise AdmissionError("source views require the control policy v2 catalog")
+            expected.add("sourceView")
+        raw = _object(value, expected, "approved root")
         root_id = _id(raw["id"], "root id")
         path = checked_directory(raw["path"])
         kinds = _array(raw["kinds"], "root kinds", nonempty=True)
@@ -184,8 +191,14 @@ class ApprovedRoot:
         uids = _array(raw["allowedUids"], "allowedUids", nonempty=True)
         if any(type(uid) is not int or uid < 0 for uid in uids) or len(uids) != len(set(uids)):
             raise AdmissionError("allowedUids must contain unique nonnegative integers")
+        source_view = None
+        if "sourceView" in raw:
+            if frozenset(kinds) != frozenset({"source"}):
+                raise AdmissionError("source views require a source-only root")
+            source_view = SourceViewPolicy.parse(raw["sourceView"])
         info = path.stat()
-        return cls(root_id, path, frozenset(kinds), frozenset(uids), (info.st_dev, info.st_ino))
+        return cls(root_id, path, frozenset(kinds), frozenset(uids),
+                   (info.st_dev, info.st_ino), source_view)
 
     def resolve(self, principal_uid: int, relative: str, kind: str) -> Path:
         if principal_uid not in self.allowed_uids or kind not in self.kinds:
@@ -337,9 +350,10 @@ class ControlPolicy:
     agent_profile_ids: tuple[str, ...] = ()
 
     @classmethod
-    def parse(cls, value: Any) -> "ControlPolicy":
+    def parse(cls, value: Any, *, allow_source_view: bool = False) -> "ControlPolicy":
         raw = _object(value, {"id", "roots", "buildPlans", "tools", "runtimes", "limits"}, "policy")
-        roots = _unique([ApprovedRoot.parse(item) for item in _array(raw["roots"], "roots", nonempty=True)], "root")
+        roots = _unique([ApprovedRoot.parse(item, allow_source_view=allow_source_view)
+                         for item in _array(raw["roots"], "roots", nonempty=True)], "root")
         builds = _unique([BuildPlan.parse(item) for item in _array(raw["buildPlans"], "buildPlans")], "build plan")
         tools = _unique([ToolPlan.parse(item) for item in _array(raw["tools"], "tools")], "tool")
         runtimes = _unique([RuntimePlan.parse(item) for item in _array(raw["runtimes"], "runtimes", nonempty=True)], "runtime")
@@ -367,7 +381,8 @@ class PolicyCatalog:
                 if any(type(key) is not str or key not in profiles for key in ids) or len(ids) != len(set(ids)):
                     raise AdmissionError("policy agent profile references must be unique approved IDs")
                 base = {key: val for key, val in item.items() if key != "agentProfileIds"}
-                parsed.append(replace(ControlPolicy.parse(base), agent_profile_ids=tuple(ids)))
+                parsed.append(replace(ControlPolicy.parse(base, allow_source_view=True),
+                                      agent_profile_ids=tuple(ids)))
             return cls(_unique(parsed, "policy"), profiles)
         raw = _object(value, {"schema", "policies"}, "policy catalog")
         if raw["schema"] != CATALOG_SCHEMA:

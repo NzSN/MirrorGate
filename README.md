@@ -12,7 +12,10 @@ The initial Linux/Bubblewrap profile is implemented, with a Python supervisor,
 Node and Rust workers, strict public-port RPC, and a trusted Node proxy SDK.
 Isolation claims apply to the configured and tested profile, not arbitrary host
 tools. Aggregate cgroup quotas, Windows/macOS backends, and other language shims
-are not implemented. See the [backend's exact limits](docs/linux-bubblewrap.md).
+are not implemented. See the [backend's exact limits](docs/sandbox/linux-bubblewrap.md).
+Policy-v2 source roots may use implemented
+[filtered source views](docs/sandbox/supervisor-design.md#filtered-source-views)
+to expose an exact repository subset during authoring and preparation.
 Managed hosting, native v2 clients, the external MBT workflow and optional local
 HTTP service are integrated in the destination repositories and their required
 gates passed. An actual Codex implementer also ran through the installed hosting
@@ -23,14 +26,16 @@ records exact versions, commands and evidence. No package publication is claimed
 ## Design documents
 
 The [design index](docs/README.md) records the architecture discussion and links
-the [architecture](docs/architecture.md), [blind-validation requirements](docs/blind-validation.md),
+the [architecture](docs/architecture.md), [blind-validation requirements](docs/sandbox/blind-validation.md),
 [shared worker protocol](docs/worker-protocol.md), and
 [implementation plan](docs/implementation-plan.md). Open technology and wire
 format decisions are identified explicitly.
 
-The [sandbox design walkthrough](https://github.com/NzSN/MirrorGate/blob/main/docs/sandbox-design.md) follows a tool request
-through trusted configuration, Bubblewrap isolation, monitoring, and cleanup,
-and explains what the implementation agent's host must enforce.
+The [sandbox documentation](docs/sandbox/README.md) groups the
+[supervisor design](docs/sandbox/supervisor-design.md), the
+[sandbox walkthrough](docs/sandbox/design.md), backend, policy, and
+blind-validation references. Together they follow a tool request through
+trusted admission, Bubblewrap isolation, monitoring, snapshots, and cleanup.
 
 The [agent-hosting implementation](docs/agent-hosting-design.md) provides
 implementer launch, configuration, restricted tools, and cleanup through
@@ -49,7 +54,7 @@ records completed destination and actual-framework acceptance evidence.
 
 The experimental [orchestration control v1 contract](https://github.com/NzSN/MirrorGate/blob/main/docs/orchestration-control-v1.md)
 defines the shared process needed by Mirrors client-guide section 13. The
-[operator policy catalog](docs/control-policy-v1.md) fixes approved roots,
+[operator policy catalog](docs/sandbox/control-policy-v1.md) fixes approved roots,
 commands, runtime mounts, launchers, attestation identities, and limit ceilings. The
 [usage guide](https://github.com/NzSN/MirrorGate/blob/main/docs/orchestration-control-usage.md)
 and [implementation tasks](https://github.com/NzSN/MirrorGate/blob/main/docs/orchestration-control-v1-tasks.md)

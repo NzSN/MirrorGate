@@ -4,15 +4,15 @@ MirrorGate uses a trusted Python supervisor to launch submitted commands through
 Bubblewrap. Bubblewrap constructs an isolated Linux environment, and the kernel
 enforces its filesystem, process, network, and privilege boundaries. This document
 explains the implemented `linux-bubblewrap-v1` backend. The
-[backend guide](https://github.com/NzSN/MirrorGate/blob/main/docs/linux-bubblewrap.md) remains the reference for prerequisites,
-exact limits, and operational caveats; the [architecture](https://github.com/NzSN/MirrorGate/blob/main/docs/architecture.md)
+[backend guide](linux-bubblewrap.md) remains the reference for prerequisites,
+exact limits, and operational caveats; the [architecture](../architecture.md)
 defines ownership across MirrorGate, the evaluator, and the agent host.
 
-The implemented [managed host](agent-hosting-control-v2.md) owns fresh Codex
+The implemented [managed host](../agent-hosting-control-v2.md) owns fresh Codex
 launch, configuration, tool mediation and cleanup, reusing this sandbox backend.
 The lower-level command gateway described here runs restricted commands; its
 callers may be the managed host, an external trusted host, or a human operator.
-See [final validation](managed-workflow-validation.md) for actual runtime evidence.
+See [final validation](../managed-workflow-validation.md) for actual runtime evidence.
 
 ## From an agent request to a restricted command
 
@@ -74,7 +74,7 @@ temporary filesystems, then makes the root mount read-only.
 
 | Sandbox path | What the command sees |
 | --- | --- |
-| `/workspace` in authoring | Live public source tree, writable |
+| `/workspace` in authoring | Approved source tree or materialized filtered view, writable |
 | `/source` in build | Frozen source copy, read-only |
 | `/output` in build | Supervisor-selected build output, writable |
 | `/artifact` in execution | Frozen artifact copy, read-only |
@@ -99,6 +99,12 @@ The supervisor opens directory descriptors to pin mount sources during launch.
 It rejects overlapping runtime and writable roots and checks directory identities
 for aliases. It does not reconstruct the host's entire bind-mount graph; the
 operator must avoid writable aliases of runtime subtrees.
+
+A policy-v2 source-only root may define a filtered source view. Before authoring,
+Gate copies only its exact allowlisted files and directories into a fresh
+mode-`0700` session directory below an operator-approved workspace root. That
+materialized directory becomes `/workspace`; the repository root and omitted
+paths never become mounts. See [supervisor source views](supervisor-design.md#filtered-source-views).
 
 ### 3. Bubblewrap restricts other access routes
 
@@ -144,7 +150,7 @@ accumulated over the whole authoring conversation.
 Batch `run()` closes stdin after supplying input and lets the command finish within
 its deadline. Streaming execution-channel EOF can instead trigger a short grace
 period followed by forced cleanup. Worker protocol cancellation is a separate
-layer above this process supervision; see [protocol v1](https://github.com/NzSN/MirrorGate/blob/main/docs/protocol-v1.md).
+layer above this process supervision; see [protocol v1](../protocol-v1.md).
 
 ## Why build and runtime use restricted profiles
 
@@ -164,9 +170,10 @@ preparation while retaining snapshot identity and restricted execution.
 
 ## Handoff from authoring to evaluation
 
-Authoring scans its initial tree for unsupported files and retains the live
-writable workspace. Build and execution copy their inputs into supervisor-owned
-snapshots before launch. `freeze_tree()` in
+Unfiltered authoring scans its initial tree for unsupported files and retains
+the live writable workspace. Filtered authoring first creates a separate writable
+view and uses it throughout the session. Build and execution copy their inputs
+into supervisor-owned snapshots before launch. `freeze_tree()` in
 [artifacts.py](https://github.com/NzSN/MirrorGate/blob/main/supervisor/mirrorgate/artifacts.py) uses descriptor-relative
 traversal with `O_NOFOLLOW`, accepts directories and regular files with one link,
 rejects symlinks and special files, and checks for changes during copying. It
@@ -195,7 +202,7 @@ The host must also keep private specifications out of prompts, retrieved context
 and returned evaluation diagnostics. The example gateway returns command output;
 it is not a general secret-redaction engine. Information deliberately supplied
 through stdin, mounted files, or another permitted channel remains visible.
-See [blind validation](https://github.com/NzSN/MirrorGate/blob/main/docs/blind-validation.md) for disclosure and observation-fidelity
+See [blind validation](blind-validation.md) for disclosure and observation-fidelity
 requirements.
 
 ## Verification and current limits
@@ -215,7 +222,7 @@ PYTHONPATH=supervisor MIRRORGATE_REQUIRE_SANDBOX=1 python3 -m unittest discover 
 ```
 
 The full required-backend gate is `bash scripts/test.sh`. Unavailable namespaces
-or skipped checks are not successful isolation evidence. See [tasks.md](https://github.com/NzSN/MirrorGate/blob/main/docs/tasks.md)
+or skipped checks are not successful isolation evidence. See [tasks.md](../tasks.md)
 for recorded verification scope.
 
 The current backend shares the host kernel and trusts Bubblewrap and approved
@@ -223,4 +230,4 @@ runtime trees. It adds no syscall seccomp allowlist and provides no aggregate
 cgroup quotas. Virtual-address limits are not RSS limits, and UID process limits
 are not sandbox-wide PID quotas. Abrupt supervisor termination can leave snapshot
 directories behind; crash-recovery garbage collection is not implemented. Exact
-operational restrictions remain in the [backend guide](https://github.com/NzSN/MirrorGate/blob/main/docs/linux-bubblewrap.md).
+operational restrictions remain in the [backend guide](linux-bubblewrap.md).

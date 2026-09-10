@@ -18,7 +18,7 @@ Status: initial implementation completed and locally verified. This task breakdo
   requested guarantee that this backend cannot enforce.
 
 The actual host namespace probe and required-backend access-denial tests passed.
-The [Linux profile](linux-bubblewrap.md) records the exact enforced limits and
+The [Linux profile](sandbox/linux-bubblewrap.md) records the exact enforced limits and
 the limits that it rejects.
 
 ## Owned work packages

@@ -31,8 +31,10 @@ V1 selection must omit v2-only capabilities and never advertise hosting as usabl
 
 Choose catalog `mirrorgate.control-policy/v2` with required top-level fields
 `schema`, `policies`, and `agentProfiles`. Each `policies` entry contains the
-existing closed policy fields plus `agentProfileIds`. Profiles are separately
-keyed installed configurations; requests cannot supply executable paths,
+existing closed policy fields plus `agentProfileIds`. A later compatible policy
+extension permits an optional operator-owned `sourceView` on source-only roots;
+see [filtered source views](sandbox/supervisor-design.md#filtered-source-views).
+Profiles are separately keyed installed configurations; requests cannot supply executable paths,
 credential paths, environment maps, mounts, or tool definitions. A v2 server may
 load a v1 catalog for existing operations, with no hosting capability. A legacy
 loader rejects a v2 catalog. V1 sessions served from a v2 catalog see only the

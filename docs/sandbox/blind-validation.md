@@ -2,7 +2,7 @@
 
 Status: design requirements with an implemented Linux/Bubblewrap profile.
 Consult its [tested restrictions and limitations](linux-bubblewrap.md) and the
-[task evidence](tasks.md); repository layout alone still supplies no guarantee.
+[task evidence](../tasks.md); repository layout alone still supplies no guarantee.
 
 ## Objective
 
@@ -58,10 +58,10 @@ tools. Another directory or repository is insufficient when the agent can read
 it through the same account or tool permissions. Previously disclosed material
 cannot become an unseen test merely by moving it.
 
-The implemented [MirrorGate agent host](agent-hosting-control-v2.md) owns fresh
+The implemented [MirrorGate agent host](../agent-hosting-control-v2.md) owns fresh
 implementer launch/configuration, approved-context delivery, tool mediation,
 and cleanup. Its runtime audit and actual authoring checks are recorded in
-[final validation](managed-workflow-validation.md). The evaluator
+[final validation](../managed-workflow-validation.md). The evaluator
 continues to approve public tasks and materials; Gate cannot determine that
 arbitrary caller-supplied text is safe to disclose. Native tools, implicit
 context loading, memory, connectors, hooks, and delegation must be disabled or
@@ -142,7 +142,7 @@ A service may expose start/query/cancel for that suite while retaining its code
 and private data on the evaluator. Service results obey the same disclosure
 policy as local evaluation. An implementation reference is not a raw Gate
 session handle, and access to a service run must not grant access to other
-callers' runs. See [evaluation-service design](evaluation-service-design.md).
+callers' runs. See [evaluation-service design](../evaluation-service-design.md).
 
 ## Observation fidelity is a separate requirement
 
@@ -165,4 +165,4 @@ Test malformed/oversized worker messages and workers that hang, fork, crash,
 ignore cancellation, or flood output. Record which operating systems and
 backend configurations were actually exercised.
 
-Related: [architecture](architecture.md) and [implementation plan](implementation-plan.md).
+Related: [architecture](../architecture.md) and [implementation plan](../implementation-plan.md).

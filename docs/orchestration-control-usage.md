@@ -60,7 +60,7 @@ limits. See the concrete
 [policy example](https://github.com/NzSN/MirrorGate/blob/main/tests/fixtures/control-policy-v1.example.json)
 and the
 [policy implementation](https://github.com/NzSN/MirrorGate/blob/main/supervisor/mirrorgate/control_policy.py).
-The [policy guide](https://github.com/NzSN/MirrorGate/blob/main/docs/control-policy-v1.md)
+The [policy guide](https://github.com/NzSN/MirrorGate/blob/main/docs/sandbox/control-policy-v1.md)
 describes each catalog entry and its ownership rules.
 Replace the example's deployment paths and runtime choices with reviewed public
 trees before using it. The host stops external writers before submission.

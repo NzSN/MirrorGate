@@ -19,6 +19,7 @@ framework registration/dispatch passed. No release or hosted-CI claim is implied
 | --- | --- |
 | Control v1, native SDKs, restricted tool/build/worker execution | Existing experimental profile remains compatible; [compatibility](compatibility.md) records boundaries |
 | Control v2 and managed implementer | Implemented; [v2 contract](agent-hosting-control-v2.md), actual Codex audit and fresh author through the installed MCP protocol harness |
+| Filtered source views | Implemented for policy-v2 source roots; [supervisor contract](sandbox/supervisor-design.md#filtered-source-views) and [acceptance record](sandbox/source-views-plan.md#completion-evidence) |
 | Coordinator-facing hosting tool | Installed MCP protocol harness and real outer/inner Codex framework workflow passed (AH11.2) |
 | MirrorECMA core decoupling and shared harness | External Gate package and MirrorECMA 2 cutover verified in destination/core/live/interop gates |
 | Optional evaluation-service proxy | [Loopback HTTP v1](evaluation-service-contract-v1.md), caller authentication and same-suite real Gate/Mirrors checks; no remote/TLS profile |
@@ -36,8 +37,10 @@ compiler features do not change Gate's control or worker protocols.
 | Document | Read when working on |
 | --- | --- |
 | [Architecture](architecture.md) | Repository responsibilities, trusted evaluation, shared infrastructure, and language shims |
+| [Sandbox documentation](sandbox/README.md) | Supervisor, isolation walkthrough, backend, policy, blind-validation, and follow-up index |
+| [Supervisor design](sandbox/supervisor-design.md) | Trusted admission, snapshots, sandbox launch, managed lifetime, worker ownership, and cleanup |
 | [Managed workflow](managed-workflow-design.md) | Gate-owned R1 agent hosting, R2 sandbox/artifacts, and R3 trusted local MBT integration; caller inputs and task mapping |
-| [Restricted workflow follow-ups](restricted-workflow-followups.md) | Dated application findings and proposed build-contract, adapter-kit, repair, cleanup, receipt, disclosure, and projected-collection work |
+| [Restricted workflow follow-ups](sandbox/restricted-workflow-followups.md) | Dated application findings and proposed build-contract, adapter-kit, repair, cleanup, receipt, disclosure, and projected-collection work |
 | [Agent hosting design](agent-hosting-design.md) | Direct coordinator-to-Gate authoring, hosted implementer, external MBT integration, and restricted lifecycle |
 | [Agent hosting tasks](agent-hosting-tasks.md) | Implementation assignments, dependencies, contract prerequisites, owned paths, and acceptance evidence |
 | [Hosting contract decisions](agent-hosting-contract-decisions.md) | Historical AH1.1 decisions underlying the implemented v2 contract |
@@ -45,17 +48,17 @@ compiler features do not change Gate's control or worker protocols.
 | [Evaluation-service design](evaluation-service-design.md) | Reusable source-test harness, service versus implementation proxies, run ownership and local evidence |
 | [Evaluation service v1](evaluation-service-contract-v1.md) | Authenticated loopback HTTP, closed records, deduplication, retention, cancellation and public results |
 | [Orchestration control v1](https://github.com/NzSN/MirrorGate/blob/main/docs/orchestration-control-v1.md) | Shared session workflow, control framing, owner-bound handles, managed worker transport, and cleanup completion for client-guide section 13 |
-| [Control policy v1](control-policy-v1.md) | Closed operator catalog for approved roots, build/tool commands, runtime launchers, attestation identities, and limit ceilings |
+| [Control policy v1/v2](sandbox/control-policy-v1.md) | Closed operator catalog for approved roots and source views, build/tool commands, runtime launchers, attestation identities, and limits |
 | [Control usage](https://github.com/NzSN/MirrorGate/blob/main/docs/orchestration-control-usage.md) | Operator policy, owned/attached startup, preparation, authorization, native SDKs, and cleanup |
-| [Control policy catalog](https://github.com/NzSN/MirrorGate/blob/main/docs/control-policy-v1.md) | Approved roots, tools, build/runtime plans, immutable leases, and resource ceilings |
+| [Control policy catalog](https://github.com/NzSN/MirrorGate/blob/main/docs/sandbox/control-policy-v1.md) | Approved roots, tools, build/runtime plans, immutable leases, and resource ceilings |
 | [Control implementation tasks](https://github.com/NzSN/MirrorGate/blob/main/docs/orchestration-control-v1-tasks.md) | Assigned implementation ownership, review cases, acceptance evidence, and follow-on model facades |
-| [Sandbox design walkthrough](https://github.com/NzSN/MirrorGate/blob/main/docs/sandbox-design.md) | How a tool request becomes an isolated command, source ownership, and agent-host obligations |
-| [Blind validation and isolation](blind-validation.md) | Information access during authoring, building, execution, and result disclosure |
+| [Sandbox design walkthrough](https://github.com/NzSN/MirrorGate/blob/main/docs/sandbox/design.md) | How a tool request becomes an isolated command, source ownership, and agent-host obligations |
+| [Blind validation and isolation](sandbox/blind-validation.md) | Information access during authoring, building, execution, and result disclosure |
 | [Worker protocol](worker-protocol.md) | The public port RPC, value semantics, lifecycle, and compatibility |
 | [Implementation plan](implementation-plan.md) | Milestones, dependencies, acceptance tests, and open decisions |
 | [Assigned tasks and evidence](tasks.md) | Ownership, implemented work, and verification results |
 | [Protocol v1](protocol-v1.md) | Frozen wire/value/lifecycle contract and numerical limits |
-| [Linux/Bubblewrap](linux-bubblewrap.md) | Actual isolation mechanism, profiles, limits, and operational caveats |
+| [Linux/Bubblewrap](sandbox/linux-bubblewrap.md) | Actual isolation mechanism, profiles, limits, and operational caveats |
 | [Node worker](node-worker.md) | Node adapter and trusted proxy SDK |
 | [Rust worker](rust-worker.md) | Reusable native SDK and Counter binary |
 | [MirrorECMA integration](../integrations/mirrorecma/README.md) | Public port proxies with evaluator-only model data |

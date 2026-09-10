@@ -1,6 +1,6 @@
-# Control v1 operator policy catalog
+# Control v1/v2 operator policy catalog
 
-Status: implementation contract for local orchestration control v1.
+Status: implemented local control-v1 catalog and compatible policy-v2 extensions.
 
 The policy file is trusted operator input loaded before a control connection is
 served. A request selects `policyId`, `rootId`, `buildPlanId`, `toolId`, and
@@ -13,6 +13,39 @@ The top-level form is:
 ```json
 {"schema":"mirrorgate.control-policy/v1","policies":[POLICY]}
 ```
+
+Policy catalog v2 retains those fields and adds closed `agentProfiles` plus
+per-policy `agentProfileIds`. A v2 approved root may also add a filtered source
+view:
+
+```json
+{
+  "id": "application-source",
+  "path": "/srv/MirrorRBT",
+  "kinds": ["source"],
+  "allowedUids": [1000],
+  "sourceView": {
+    "schema": "mirrorgate.source-view/v1",
+    "workspaceRoot": "/srv/MirrorRBT/.mirrors/work",
+    "includePaths": ["package.json", "app", "src", "tests", ".mirrors/public"]
+  }
+}
+```
+
+A view requires a source-only root. `workspaceRoot` must already be a real,
+symlink-free directory owned by the supervisor UID with mode `0700`; Gate pins
+its device/inode identity. `includePaths` contains 1 to 1,024 unique canonical
+relative files or directories and at most 65,535 aggregate UTF-8 bytes.
+Directories are recursive. Globs, exclusions, negation, optional paths, `.`, and
+ancestor/descendant selection overlap are rejected.
+
+Gate materializes the selected files at `workspaceRoot/session-<sessionId>`
+before authoring. The client still supplies only `{rootId, relativePath}`. A
+successfully committed or prepared authoring view is retained for trusted
+promotion; unsuccessful and no-author views are cleaned. The workspace path is
+operator configuration and never enters public capability output. See
+[supervisor design](supervisor-design.md#filtered-source-views) and the
+[source-view plan](source-views-plan.md).
 
 Each `POLICY` has exactly these fields:
 

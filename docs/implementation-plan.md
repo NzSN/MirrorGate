@@ -7,7 +7,7 @@ HTTP service implemented and exercised locally, 2026-09-09. See the
 coordinated gates, including actual outside-Codex MCP acceptance (AH11.2). Hosted
 release and separately maintained private-corpus evaluation remain distinct work.
 
-Read the [architecture](architecture.md), [isolation requirements](blind-validation.md),
+Read the [architecture](architecture.md), [isolation requirements](sandbox/blind-validation.md),
 and [worker protocol](worker-protocol.md) together before implementing a seam.
 
 ## M0 — Freeze the first supported profile

@@ -209,5 +209,5 @@ whether a public field's contents reveal a private fact.
 Focused extraction evidence is recorded in [VALIDATION.md](VALIDATION.md).
 
 Dated workflow friction and proposed changes are tracked in the
-[restricted workflow follow-ups](../../docs/restricted-workflow-followups.md).
+[restricted workflow follow-ups](../../docs/sandbox/restricted-workflow-followups.md).
 Those items remain unimplemented until their owning code and gates land.

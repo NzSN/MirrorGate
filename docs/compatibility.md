@@ -12,6 +12,13 @@ capabilities. Worker attachment/RPC remain v1. Operator policy v2 installs close
 agent profiles; availability requires the permitted backend, exact runtime/config
 identity, current dispatcher audit and resolvable credential reference.
 
+Policy v2 source-only roots may optionally provide
+`mirrorgate.source-view/v1`. Gate materializes exact include paths beneath a
+pinned operator workspace root before authoring and advertises
+`submission.source-view-v1`. The control request/response records and Node/C++
+SDK APIs are unchanged. Policy v1 and viewless policy v2 roots preserve their
+existing mount and source-hash behavior.
+
 The initial Codex adapter targets CLI **0.153.4**. Actual runtime auditing and
 fresh SDK-driven authoring passed. The installed
 [stdio MCP hosting tool](../integrations/agent-host/README.md) also launched an
@@ -48,6 +55,7 @@ acceptance sources and remaining checks are tracked in the
 | Control protocol | Independent v1/v2 JSONL, experimental; v1-shaped bootstrap | Shared strict-frame corpus, owner-bound operations, hosted-run lifecycle and native client gates |
 | Public manifest | `mirrorgate.port/v1` | Sanitized IDs/types plus evaluator-provided interface digest |
 | Supervisor backend | `linux-bubblewrap-v1`, Bubblewrap 0.9 or newer, Python 3.12 | Actual Linux/WSL namespace and resource tests |
+| Filtered source views | `mirrorgate.source-view/v1`, policy v2 only | Exact allowlist, pinned workspace, source identity, retention/cleanup, and real author/build denial tests |
 | Node worker | `node-v1`, Node 24.15.0 | Native codec, lifecycle, cancellation, actual Counter and queue |
 | Rust worker | `rust-v1`, Rust 1.96.0 to build | Locked native dependencies, codec/lifecycle, actual Counter |
 | SDK packages | Initial `0.1.0` development sources | Local imports/crate path; publication disabled |

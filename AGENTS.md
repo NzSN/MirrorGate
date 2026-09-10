@@ -23,8 +23,10 @@ cgroup quotas remain future work.
   [compatibility](docs/compatibility.md) for version changes.
 - `supervisor/mirrorgate/`: trusted policy, artifact snapshots, sandbox launch,
   cleanup, and administrative CLI. Read the
-  [Linux backend guide](docs/linux-bubblewrap.md) before changing profiles,
-  mounts, resource limits, snapshots, or process lifecycle.
+  [supervisor design](docs/sandbox/supervisor-design.md) before changing admission,
+  source/artifact identity, lifecycle, or cleanup; read the
+  [Linux backend guide](docs/sandbox/linux-bubblewrap.md) before changing profiles,
+  mounts, namespaces, or resource limits.
 - `runtimes/node/`, `runtimes/rust/`: native adapter invocation and value
   conversion. Read the [Node](docs/node-worker.md) or
   [Rust](docs/rust-worker.md) worker guide for the affected runtime.
@@ -35,7 +37,7 @@ cgroup quotas remain future work.
   shared cross-language vectors and lifecycle cases. Rust tests also live in
   `runtimes/rust/tests/`.
 - `examples/authoring-host.py`: restricted agent-tool integration. Read
-  [blind validation](docs/blind-validation.md) before changing tool exposure,
+  [blind validation](docs/sandbox/blind-validation.md) before changing tool exposure,
   public-context export, or result disclosure.
 
 ## Build and verification

@@ -6,6 +6,11 @@ records. `contract.json` is the shared record/limits inventory; `schema.json`
 provides complete closed structural schemas. Semantic and UTF-8 bounds are
 validated by `supervisor/mirrorgate/control_protocol_v2.py`.
 
+`policy-schema.json` publishes the closed operator policy-v2 shape, including
+the optional `mirrorgate.source-view/v1` record on source-only roots. Its
+filesystem ownership, mode, canonical-path, overlap, and selector-byte semantics
+are additionally enforced by `control_policy.py` and `source_view.py`.
+
 [Wire vectors](../../conformance/control-v2/vectors.jsonl) exercise the versioned
 codec; [lifecycle vectors](../../conformance/control-v2/lifecycle.json) specify
 controller/backend acceptance separately. Run:

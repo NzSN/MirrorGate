@@ -2,7 +2,7 @@
 
 Status: destination-integrated Linux profile with managed hosting and external
 MBT integration, 2026-09-09; coordinated local gates passed. The
-[backend guide](linux-bubblewrap.md) and [hosting ledger](agent-hosting-tasks.md)
+[backend guide](sandbox/linux-bubblewrap.md) and [hosting ledger](agent-hosting-tasks.md)
 identify tested restrictions and remaining acceptance. Broader platform/release
 guarantees remain outside this local evidence. Exact results are maintained in
 the [validation report](managed-workflow-validation.md).
@@ -273,7 +273,7 @@ These checks establish the tested access restrictions. They do not prove that
 an observer reads the actual SUT rather than fabricating an answer, or that
 permitted stimuli and verdicts reveal no information. Observation fidelity and
 result disclosure remain separate obligations, as described in
-[blind validation](blind-validation.md).
+[blind validation](sandbox/blind-validation.md).
 
 ## Repository and dependency boundaries
 
@@ -296,6 +296,6 @@ identity are distinct. See [worker protocol](worker-protocol.md). The private
 validation specification requires its own revision record; an interface digest
 does not identify the hidden invariants used for evaluation.
 
-Related: [isolation](blind-validation.md), [implementation plan](implementation-plan.md),
+Related: [isolation](sandbox/blind-validation.md), [implementation plan](implementation-plan.md),
 and the existing
 [Mirrors generated-interface contract](https://github.com/NzSN/Mirrors/blob/main/Docs/generated-model-interface-spec.md).
