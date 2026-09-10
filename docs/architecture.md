@@ -116,19 +116,24 @@ profile's blindness guarantee.
 ```mermaid
 flowchart TB
     User["User"] <-->|"Requirements and specifications"| Coordinator["User-started coordinating agent"]
-    Coordinator -->|"Approved brief and public port"| HostingTool["Gate hosting tool / native v2 SDK"]
-    Coordinator -->|"Write MBT harness"| Integration["Gate-owned trusted evaluation integration"]
-    subgraph Trusted["Trusted evaluation environment"]
-        Spec["Behavior specification + invariants"] --> Mirrors["Existing Mirrors server + Apalache"]
+    subgraph Trusted["Trusted control and evaluation environment"]
+        ApprovedTask["Operator-approved task configuration<br/>public behavior contract + port declarations"]
+        HostingTool["Gate hosting tool / native v2 SDK"]
+        Integration["Gate-owned trusted evaluation integration"]
+        Spec["Private formal specification + invariants"] --> Mirrors["Existing Mirrors server + Apalache"]
         Mirrors <-->|"Model protocol"| MBT["MirrorECMA + trusted generated binding"]
         Integration -->|"Supply implementation factory"| MBT
         Integration -->|"Matched admission, owner lifecycle"| Supervisor["MirrorGate supervisor"]
-        HostingTool --> Host["MirrorGate agent host"]
-        Host -->|"Bind tools to owning session"| Supervisor
-        Host -->|"Launch with approved context"| Agent["Restricted implementer"]
+        HostingTool -->|"agent.start: profileId + immutable publicTask"| Supervisor
+        Supervisor -->|"Create admitted host"| Host["MirrorGate agent host"]
+        Host -->|"Install immutable publicTask"| Broker["Session-bound authoring broker"]
+        Broker -->|"Session-bound execute / submit callbacks"| Supervisor
         Supervisor --> Backend["Linux / Bubblewrap enforcement"]
     end
-    subgraph Authoring["Restricted authoring environment"]
+    subgraph Implementer["Gate-hosted restricted implementer environment"]
+        Agent["Restricted implementer"] <--> AuthoringMCP["Approved authoring MCP client"]
+    end
+    subgraph Authoring["Restricted authoring command environment"]
         Tools["Managed development tools"] <--> Workspace["Public source + port declarations"]
     end
     subgraph Build["Restricted build environment"]
@@ -137,8 +142,12 @@ flowchart TB
     subgraph Execution["Restricted execution worker"]
         Shim["Runtime shim"] <--> Adapter["Submitted adapter + actual SUT"]
     end
-    Agent <-->|"Approved authoring requests / results"| Supervisor
-    Supervisor <-->|"Tool execution"| Tools
+    Coordinator -->|"Select approved taskRef only"| HostingTool
+    Coordinator -->|"Write MBT harness"| Integration
+    ApprovedTask -->|"Configure taskRef"| HostingTool
+    Host -->|"Launch with generic instructions<br/>+ restricted MCP configuration"| Agent
+    AuthoringMCP <-->|"public_contract / gate_exec / submit<br/>and bounded results"| Broker
+    Supervisor <-->|"Approved command execution"| Tools
     Backend -.-> Tools
     Backend -.-> Builder
     Backend -.-> Shim
@@ -147,6 +156,26 @@ flowchart TB
     MBT <-->|"Implementation calls / observations"| Proxy["External implementation proxy"]
     Proxy <-->|"Public port RPC"| Shim
 ```
+
+The restricted implementer is outside the trusted control/evaluation boundary.
+At runtime the coordinator sends only an approved `taskRef` through the hosting
+MCP adapter. That reference selects operator-owned session and agent
+configuration. The hosting adapter passes the selected `profileId` and immutable
+`publicTask` to control v2 `agent.start`; callers cannot replace them in the MCP
+tool request.
+
+Gate launches the implementer with generic instructions and only the
+session-bound authoring MCP client. The application-specific `publicTask` is not
+inserted into that launch prompt. The implementer calls `public_contract`; the
+MCP client obtains the canonical copied task from the trusted broker. That public
+contract may contain approved behavior requirements and port declarations. It
+must not contain the private formal specification, invariants, traces, expected
+states, or evaluator configuration retained by the trusted environment.
+
+Commands requested through `gate_exec` run inside the separate Bubblewrap
+authoring environment. The implementer process is not itself the trusted
+evaluator or the Bubblewrap command sandbox. `submit` crosses the same MCP/broker
+boundary and causes Gate to revoke authoring and freeze the source.
 
 The coding model or agent controller may be hosted elsewhere; the authoring
 profile governs its accessible resources and tool execution, not the physical
