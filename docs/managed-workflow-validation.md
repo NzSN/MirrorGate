@@ -122,6 +122,22 @@ An earlier actual-run handshake timed out during parallel native compilation;
 a trusted startup diagnostic and subsequent complete run passed. No timed-out
 attempt was counted as successful authoring or confirmed remote cleanup.
 
+## Subsequent projected-collection application evidence
+
+On 2026-09-10, a separate non-Counter application passed the installed
+managed-authoring and no-author paths over a compiler-projected collection
+interface: 14 traces and 49 transitions passed with confirmed cleanup. A
+fault-injected source passed its public build, produced a model mismatch, and
+also completed cleanup. Private model, trace, expected-state, and diagnostic
+artifacts remained outside this repository and outside the implementer
+context. This is dated local application evidence, not a release claim.
+
+The run exposed additional application glue around build-mount discovery,
+native collection types, immutable repairs, post-disconnect cleanup evidence,
+receipt persistence, and offline setup. The proposed work and acceptance
+boundaries are recorded in [restricted workflow follow-ups](restricted-workflow-followups.md);
+none of G1-G7 is claimed implemented by this validation.
+
 ## Supported scope
 
 This evidence covers the Linux/Bubblewrap profile and the audited Codex identity,

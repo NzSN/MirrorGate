@@ -27,7 +27,9 @@ The coordinator talks directly to Gate. MirrorECMA's target responsibility stays
 MBT against a supplied implementation; Gate owns its trusted integration and
 supported local evaluation composition. Separate packaging does not transfer
 that responsibility to applications. Source-test/CLI suite reuse does not require the optional service.
-Mirrors' existing model protocol and compiler remain unchanged.
+The Gate workflow remains independent of Mirrors compiler internals. Mirrors
+now also implements proposal scaffolding and trace projection; those
+compiler features do not change Gate's control or worker protocols.
 
 ## Documents
 
@@ -35,6 +37,7 @@ Mirrors' existing model protocol and compiler remain unchanged.
 | --- | --- |
 | [Architecture](architecture.md) | Repository responsibilities, trusted evaluation, shared infrastructure, and language shims |
 | [Managed workflow](managed-workflow-design.md) | Gate-owned R1 agent hosting, R2 sandbox/artifacts, and R3 trusted local MBT integration; caller inputs and task mapping |
+| [Restricted workflow follow-ups](restricted-workflow-followups.md) | Dated application findings and proposed build-contract, adapter-kit, repair, cleanup, receipt, disclosure, and projected-collection work |
 | [Agent hosting design](agent-hosting-design.md) | Direct coordinator-to-Gate authoring, hosted implementer, external MBT integration, and restricted lifecycle |
 | [Agent hosting tasks](agent-hosting-tasks.md) | Implementation assignments, dependencies, contract prerequisites, owned paths, and acceptance evidence |
 | [Hosting contract decisions](agent-hosting-contract-decisions.md) | Historical AH1.1 decisions underlying the implemented v2 contract |
