@@ -131,6 +131,12 @@ MirrorECMA 1.x/2.x APIs; publication remains separate from verified local delive
 
 ## Package checks
 
+The repository-local [three-application runner](scripts/application-program-gate.md)
+evaluates WorkQueue, persistent transfer and lease submissions through this
+workflow. It includes real worker failure/cleanup controls and a separate
+actual restricted-author mode using an operator-approved profile. It is distinct
+from the installed Counter consumer below.
+
 With compatible local public peer packages and development dependencies installed:
 
 ```bash
