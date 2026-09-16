@@ -875,6 +875,7 @@ export function makeSelection(
   retainedDiagnosticFailures: unknown[],
   assertActive: () => void = () => {},
   onCleanupFailure: (error: unknown) => void = () => {},
+  cleanupMs: number = deadlines.receiveMs,
 ): AsyncCompiledExecutionSelection {
   const key = Object.freeze({
     semanticDigest: prepared.semanticDigest,
@@ -908,7 +909,7 @@ export function makeSelection(
         throwIfFactoryInactive(authority);
         worker = await reservation.connect({
           timeoutMs: workerTimeout(authority.context),
-          cleanupTimeoutMs: deadlines.receiveMs,
+          cleanupTimeoutMs: cleanupMs,
         });
         assertActive();
         throwIfFactoryInactive(authority);
@@ -956,7 +957,7 @@ export function makeSelection(
           try { await worker.close(); } catch (failure) { onCleanupFailure(failure); }
         } else if (reservation !== undefined) {
           try {
-            await waitSucceeded(await reservation.release("client-failure"), undefined, deadlines.receiveMs);
+            await waitSucceeded(await reservation.release("client-failure"), undefined, cleanupMs);
           } catch (failure) { onCleanupFailure(failure); }
         }
         throw error;

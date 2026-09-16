@@ -16,3 +16,8 @@ export {
   type WorkflowDisclosurePolicy, type TrustedEvaluationReceipt, type PublicWorkflowResult,
   type EvaluationOutcome,
 } from "./receipt.js";
+export {
+  evaluateSuite, SUITE_EVALUATION_SCHEMA, SUITE_RECEIPT_SCHEMA,
+  type SuiteEnvironment, type EvaluateSuiteOptions, type SuiteEvaluationOutcome, type TrustedSuiteReceipt,
+} from "./suite.js";
+export { writeTrustedReceipt, serializeReceipt, type ReceiptWriteOptions, type ReceiptPersistence } from "./receipt-writer.js";

@@ -271,7 +271,7 @@ class GateSession:
         argv.extend(["--proc", "/proc", "--dev", "/dev", "--size", str(16 * 1024**2), "--tmpfs", "/dev/shm", "--size", str(limits.tmp_bytes), "--tmpfs", "/tmp", "--size", str(limits.scratch_bytes), "--tmpfs", "/scratch", "--dir", "/scratch/home"])
         argv.extend(["--bind" if self.config.profile == "authoring" else "--ro-bind", f"/proc/self/fd/{self.workspace_fd}", self.mount_path])
         if self.config.profile == "build":
-            argv.extend(["--bind", f"/proc/self/fd/{self.output_fd}", "/output"])
+            argv.extend(["--bind", f"/proc/self/fd/{self.output_fd}", "/output", "--setenv", "MIRRORGATE_OUTPUT", "/output"])
         for key, value in (("PATH", "/usr/local/bin:/usr/bin:/bin"), ("HOME", "/scratch/home"), ("TMPDIR", "/tmp"), ("LANG", "C.UTF-8"), ("LC_ALL", "C.UTF-8"), ("PYTHONDONTWRITEBYTECODE", "1")):
             argv.extend(["--setenv", key, value])
         cwd = str(PurePosixPath(self.mount_path) / request.cwd)

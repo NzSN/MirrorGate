@@ -14,6 +14,7 @@ from .control_protocol import ControlProtocolError, canonical_base64, codec_for_
 from . import control_protocol_v2 as hosting_protocol
 from .agent_runtime import AgentHost, HostResult
 from .protocol import _parse_json, validate_manifest
+from .node_profile import public_environment
 
 
 @dataclass
@@ -213,6 +214,7 @@ class OrchestrationController:
         with self._lock:
             self._hello = True
             self.control_version = version
+            self._public_environment = version == 2 and "hosting.public-environment-v1" in args["requiredCapabilities"]
         return {"v": 1, "kind": "response", "id": request_id, "ok": True,
                 "result": {"controlVersion": version, "instanceId": self.instance_id, "capabilities": capabilities, "limits": limits}}
 
@@ -538,7 +540,9 @@ class OrchestrationController:
                         submit=lambda: self._host_submit(state, run),
                         tool_ids=tuple(state.backend_state.policy.tools),
                         deadline=state.backend_state.host_deadline, cancel_event=run.cancel,
-                        stop_authoring=stop_authoring)
+                        stop_authoring=stop_authoring,
+                        **({"environment": public_environment(state.backend_state)}
+                           if getattr(self, "_public_environment", False) else {}))
                     result = run.host.run()
                 self._terminal_host(state, result)
             except Exception:

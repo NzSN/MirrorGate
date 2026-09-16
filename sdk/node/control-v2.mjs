@@ -5,6 +5,7 @@ import {
   validateOperationRecord,
 } from './control.mjs';
 
+export const PUBLIC_ENVIRONMENT_CAPABILITY = 'hosting.public-environment-v1';
 export const HOSTING_CAPABILITY = 'hosting.fresh-agent-v1';
 export const HOSTING_LIMITS = Object.freeze({wallMs: 300_000, stdoutBytes: 1_048_576,
   stderrBytes: 1_048_576, progressRecords: 256, progressBytes: 262_144, progressRecordBytes: 16_384});
@@ -172,3 +173,35 @@ export function validateControlV2Event(message, context = {}) {
 }
 
 export {validateOperationRecord};
+
+/** Decode the explicitly negotiated authoring public_contract envelope. */
+export function validatePublicContract(value) {
+  bounds(value);
+  exact(value, ['schema', 'task', 'tools', 'environment']);
+  if (value.schema !== 'mirrorgate.public-contract/v2') fail('Invalid public contract schema');
+  validatePublicTask(value.task);
+  const env = value.environment;
+  exact(env, ['schema', 'profileId', 'stages', 'entryPoint', 'tools', 'limits']);
+  if (env.schema !== 'mirrorgate.public-environment/v1' ||
+      !['node-esm/v1', 'custom-build/v1', 'prebuilt/v1'].includes(env.profileId)) fail('Invalid public environment schema/profile');
+  exact(env.stages, ['authoring', 'build', 'execution']);
+  const expected = {authoring: ['/workspace', ['/workspace', '/tmp', '/scratch']],
+    build: ['/source', ['/output', '/tmp', '/scratch']], execution: ['/artifact', ['/tmp', '/scratch']]};
+  for (const [stage, [root, writable]] of Object.entries(expected)) {
+    exact(env.stages[stage], ['root', 'writable']);
+    if (env.stages[stage].root !== root || JSON.stringify(env.stages[stage].writable) !== JSON.stringify(writable)) fail('Invalid public logical paths');
+  }
+  text(env.entryPoint, 1024);
+  if (env.entryPoint.startsWith('/') || env.entryPoint.includes('\\') || env.entryPoint.includes('\0') ||
+      (env.entryPoint !== '.' && env.entryPoint.split('/').some(part => ['', '.', '..'].includes(part)))) fail('Invalid public entry point');
+  for (const tools of [value.tools, env.tools]) {
+    if (!Array.isArray(tools) || tools.length > 128 || new Set(tools).size !== tools.length ||
+        tools.some(tool => typeof tool !== 'string' || !ID.test(tool))) fail('Invalid public tool IDs');
+  }
+  if (JSON.stringify(value.tools) !== JSON.stringify(env.tools)) fail('Public tool IDs disagree');
+  const limits = ['sessionWallMs', 'executionWallMs', 'commandCpuSeconds', 'addressSpaceBytes',
+    'uidProcesses', 'openFiles', 'fileBytes', 'stdoutBytes', 'stderrBytes', 'snapshotFiles', 'snapshotBytes', 'tmpBytes', 'scratchBytes'];
+  exact(env.limits, limits);
+  if (Object.values(env.limits).some(limit => !positive(limit))) fail('Invalid public limits');
+  return value;
+}

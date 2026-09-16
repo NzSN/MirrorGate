@@ -36,7 +36,8 @@
     "test": "NODE_OPTIONS=--experimental-vm-modules jest --runInBand",
     "test:packed": "node scripts/packed-consumer.mjs",
     "test:sandbox": "node scripts/packed-consumer.mjs --sandbox",
-    "test:workflow": "node scripts/installed-workflow.mjs"
+    "test:workflow": "node scripts/installed-workflow.mjs",
+    "test:suite": "node scripts/installed-suite.mjs"
   },
   "peerDependencies": {
     "mirrorgate": "0.1.0",

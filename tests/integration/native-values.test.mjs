@@ -30,3 +30,13 @@ test('public bridge rejects unsupported types and duplicate generated collection
   assert.throws(() => toWorkerValue({kind: 'record', fields: [{wireName: 'kept', type: {kind: 'bool'}}]}, {kept: true, private: false}), /record fields mismatch/i);
   assert.throws(() => toWorkerValue({kind: 'variant', cases: [{tag: 'ok', payload: {kind: 'null'}}]}, {tag: 'ok', value: null, private: true}), /variant fields mismatch/i);
 });
+
+// Mirrors tools/suite-native-vectors.mjs, copied byte-for-byte, not a runtime dependency.
+import {readFileSync} from 'node:fs';
+import {createHash} from 'node:crypto';
+import {validateNativeConversions} from '../fixtures/suite-native-vectors.mjs';
+test('shared Node-native contract remains byte-identical and passes existing codecs', () => {
+  assert.equal(createHash('sha256').update(readFileSync(new URL('../fixtures/suite-native-vectors.mjs', import.meta.url))).digest('hex'),
+    'e9eb9b38cef28c362b8e2601bfe9d1a58a235367dd8ba0f6c3f940d4f2e3d27d');
+  assert(validateNativeConversions(toWorkerValue, fromWorkerValue) > 0);
+});

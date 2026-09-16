@@ -25,7 +25,7 @@ try {
   }
   writeFileSync(join(scratch, 'package.json'), '{"type":"module","private":true}\n');
   writeFileSync(join(scratch, 'consumer.mts'), `
-import {createPreparedImplementationProvider, evaluateImplementation, evaluateHostedSubmission, createHostedEvaluationHandler, projectEvaluationReceipt, type PreparedImplementationProvider, type EvaluationOutcome} from 'mirrorgate-mirrorecma';
+import {createPreparedImplementationProvider, evaluateImplementation, evaluateHostedSubmission, createHostedEvaluationHandler, projectEvaluationReceipt, evaluateSuite, writeTrustedReceipt, type SuiteEvaluationOutcome, type PreparedImplementationProvider, type EvaluationOutcome} from 'mirrorgate-mirrorecma';
 import {evaluateSandboxed, createSandboxCompiledModel} from 'mirrorgate-mirrorecma/legacy';
 import type {ControlSession, Prepared} from 'mirrorgate/control';
 import {AsyncCompiledAdapterRegistry, type AsyncAdapterFactory} from 'mirrorecma';
@@ -34,7 +34,10 @@ declare const prepared: Prepared;
 declare const model: Parameters<typeof createPreparedImplementationProvider>[0]['model'];
 const provider: Promise<PreparedImplementationProvider> = createPreparedImplementationProvider({session, prepared, model, runtime:'node-v1', policyId:'approved'});
 const generic: Promise<AsyncAdapterFactory> = provider.then(p => p.factory);
-void [generic, AsyncCompiledAdapterRegistry, evaluateSandboxed, createSandboxCompiledModel, evaluateImplementation, evaluateHostedSubmission, createHostedEvaluationHandler, projectEvaluationReceipt];
+void [generic, AsyncCompiledAdapterRegistry, evaluateSandboxed, createSandboxCompiledModel, evaluateImplementation, evaluateHostedSubmission, createHostedEvaluationHandler, projectEvaluationReceipt, evaluateSuite, writeTrustedReceipt];
+declare const suiteOutcome: SuiteEvaluationOutcome;
+const persistence: 'not_requested' | 'written' | 'failed' = suiteOutcome.persistence.status;
+void persistence;
 declare const outcome: EvaluationOutcome;
 const publicOnly: string = JSON.stringify(outcome.publicResult);
 void publicOnly;
@@ -46,6 +49,9 @@ import * as integration from 'mirrorgate-mirrorecma';
 import * as legacy from 'mirrorgate-mirrorecma/legacy';
 import {AsyncCompiledAdapterRegistry} from 'mirrorecma';
 assert.equal(typeof integration.createPreparedImplementationProvider, 'function');
+assert.equal(typeof integration.evaluateSuite, 'function');
+assert.equal(typeof integration.writeTrustedReceipt, 'function');
+assert.equal(integration.evaluateSuiteWithDependencies, undefined);
 assert.equal(typeof legacy.evaluateSandboxed, 'function');
 assert.equal(typeof AsyncCompiledAdapterRegistry, 'function');
 assert.equal(legacy.evaluateSandboxedWithDependencies, undefined);

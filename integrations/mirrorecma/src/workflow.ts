@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { ControlClient, ControlSession, HostedRun, HostedAgentRun, StartAgentOptions, Prepared, OutcomeSummary } from "mirrorgate/control";
 import {
   ReplayCancelledError, ReplayDeadlineError, ReplayMismatchError, normalizeReplayDeadlines,
-  type AsyncAdapterFactory, type CompiledReplayReport, type ReplayDeadlines,
+  type AsyncAdapterFactory, type CompiledReplayReport, type ReplayDeadlines, type SuiteResult,
 } from "mirrorecma";
 import { prepareSandboxModel, type SandboxCompiledModel } from "./sandbox-model.js";
 import {
@@ -51,6 +51,9 @@ export interface EvaluationWorkflowOptions {
   readonly deadlines?: Partial<ReplayDeadlines>;
   readonly hostingTimeoutMs?: number;
   readonly evaluationTimeoutMs?: number;
+  readonly cleanupMs?: number;
+  /** New suites require the Gate-owned public environment contract for authoring. */
+  readonly requirePublicEnvironment?: boolean;
   readonly onDiagnostic?: SandboxEvaluationOptions["onDiagnostic"];
 }
 export interface HostedEvaluationContext {
@@ -109,7 +112,8 @@ async function closeOwner(client: ControlClient | undefined, session: ControlSes
       phase = result.phase;
     } catch (error) { failures.push(error); }
   }
-  try { await client.close(); clientClosed = true; } catch (error) { failures.push(error); }
+  try { await awaitAuthoringOperation(Promise.resolve().then(() => client.close()), undefined, timeoutMs, "close"); clientClosed = true; }
+  catch (error) { failures.push(error); }
   if (sessionOpenUnconfirmed && session === undefined) {
     failures.push(new Error("session open was not acknowledged; session cleanup remains unconfirmed"));
   }
@@ -121,6 +125,21 @@ async function closeOwner(client: ControlClient | undefined, session: ControlSes
 
 interface WorkflowDependencies {
   connect: (endpoint: SandboxGateEndpoint, capabilities: readonly string[], version: 1 | 2) => Promise<ControlClient>;
+}
+export interface NormalizedEvaluationOutcome extends EvaluationOutcome {
+  /** Additive trusted evidence; the v1 Gate receipt and public projection stay unchanged. */
+  readonly suiteResult?: SuiteResult;
+}
+/** Internal normalized-result seam used by the suite convenience API. */
+export function evaluateNormalizedSuite<C extends EvaluationSuiteContext>(
+  plan: EvaluationDefinition<C> | ImplementationEvaluationPlan<C>, options: EvaluationWorkflowOptions,
+  run: (context: C, factory: AsyncAdapterFactory) => Promise<SuiteResult>,
+  hosted?: HostedEvaluationContext, dependencies?: WorkflowDependencies,
+): Promise<NormalizedEvaluationOutcome> {
+  if (hosted !== undefined && (hosted.session.client !== hosted.client || hosted.taskRef !== plan.taskRef)) {
+    return Promise.reject(new TypeError("hosted evaluation must retain its original task and owner"));
+  }
+  return evaluate(plan, options, hosted, dependencies, run);
 }
 const defaultDependencies: WorkflowDependencies = {
   connect: async (endpoint, capabilities, version) => connectGate({gate: endpoint}, await loadGateSdk(), capabilities, version) as unknown as ControlClient,
@@ -169,7 +188,8 @@ async function evaluate<C extends EvaluationSuiteContext>(
   input: EvaluationDefinition<C> | ImplementationEvaluationPlan<C>, options: EvaluationWorkflowOptions,
   hosted?: HostedEvaluationContext,
   dependencies: WorkflowDependencies = defaultDependencies,
-): Promise<EvaluationOutcome> {
+  runNormalized?: (context: C, factory: AsyncAdapterFactory) => Promise<SuiteResult>,
+): Promise<NormalizedEvaluationOutcome> {
   const runId = randomUUID();
   let stage: EvaluationStage = "configuration";
   let taskRef = "invalid";
@@ -185,10 +205,13 @@ async function evaluate<C extends EvaluationSuiteContext>(
   let provider: PreparedImplementationProvider | undefined;
   let providerFailureCleanup: ProviderCleanupReceipt | undefined;
   let deadlines = normalizeReplayDeadlines(undefined);
+  let cleanupMs = deadlines.receiveMs;
   let primary: TrustedEvaluationReceipt["primaryFailure"];
   let modelStatus: TrustedEvaluationReceipt["model"]["status"] = "notRun";
   let report: CompiledReplayReport | undefined;
-  let suitePending: Promise<CompiledReplayReport> | undefined;
+  let suitePending: Promise<CompiledReplayReport | SuiteResult> | undefined;
+  let suiteResult: SuiteResult | undefined;
+  let suiteOutcome: EvaluationStatus | undefined;
   let suiteSettled = true;
   const workflowAbort = new AbortController();
   try {
@@ -208,6 +231,7 @@ async function evaluate<C extends EvaluationSuiteContext>(
     if (Object.entries(policy).some(([key, value]) => !["counts", "implementationIdentity", "failureStage"].includes(key) || typeof value !== "boolean")) throw new TypeError("invalid workflow disclosure policy");
     disclosure = Object.freeze(policy);
     deadlines = normalizeReplayDeadlines({...suite.context.deadlines, ...options.deadlines});
+    cleanupMs = duration(options.cleanupMs, deadlines.receiveMs, "cleanup budget");
     const hostingTimeoutMs = duration(options.hostingTimeoutMs, 300_000, "hosting timeout");
     const evaluationTimeoutMs = duration(options.evaluationTimeoutMs, 300_000, "evaluation timeout");
     const signals = [workflowAbort.signal, options.signal, hosted?.signal, suite.context.signal].filter((signal): signal is AbortSignal => signal !== undefined);
@@ -241,6 +265,7 @@ async function evaluate<C extends EvaluationSuiteContext>(
         gate.kind === "owned" ? "control.local-stdio-v1" : "control.local-unix-v1",
         submission.kind === "prebuilt" ? "submission.prebuilt-v1" : "submission.source-build-v1",
         ...(agent === undefined ? [] : ["authoring.tools-v1", "hosting.fresh-agent-v1"]),
+        ...(agent !== undefined && options.requirePublicEnvironment === true ? ["hosting.public-environment-v1"] : []),
         "execution.compiled-verify-v1", "worker.managed-unix-v1", `worker.${runtime}`,
         "backend.linux-bubblewrap-v1", "cleanup.bounded-attempt-v1",
       ], agent === undefined ? 1 : 2);
@@ -271,7 +296,7 @@ async function evaluate<C extends EvaluationSuiteContext>(
     if (hosting?.submission !== undefined && prepared.sourceHash !== hosting.submission.sourceHash) throw new Error("prepared source does not match committed hosted submission");
     stage = "provider";
     try {
-      provider = await createPreparedImplementationProvider({session: session!, prepared, model, policyId, runtime, deadlines, onDiagnostic: options.onDiagnostic});
+      provider = await createPreparedImplementationProvider({session: session!, prepared, model, policyId, runtime, deadlines, cleanupMs, onDiagnostic: options.onDiagnostic});
     } catch (error) {
       if (error instanceof PreparedImplementationError) providerFailureCleanup = error.cleanup;
       throw error;
@@ -281,18 +306,43 @@ async function evaluate<C extends EvaluationSuiteContext>(
     modelStatus = "failed";
     suiteSettled = false;
     const context = Object.freeze({...suite.context, signal, deadlines}) as C;
-    suitePending = Promise.resolve().then(() => suite.run(context, provider!.factory));
+    suitePending = Promise.resolve().then(() => runNormalized === undefined
+      ? suite.run(context, provider!.factory) : runNormalized(context, provider!.factory).then(result => {
+        if (result.schema !== "mirrorecma.suite-result/v1" ||
+            !["passed", "mismatch", "failed", "cancelled", "timedOut"].includes(result.outcome)) {
+          throw new TypeError("suite did not return a normalized suite result");
+        }
+        // Capture late cancellation/disposal evidence even when the workflow
+        // wait returned first and physical cleanup is already in progress.
+        suiteResult = result;
+        return result;
+      }));
     suitePending.then(() => { suiteSettled = true; }, () => { suiteSettled = true; });
-    const completed = await awaitAuthoringOperation(suitePending, signal, evaluationTimeoutMs, "receive");
-    if (completed?.status !== "completed" || !Number.isSafeInteger(completed.acceptedTraces) || completed.acceptedTraces < 0 ||
-        !Number.isSafeInteger(completed.acceptedSteps) || completed.acceptedSteps < 0) {
-      throw new TypeError("suite did not return a completed compiled replay report");
+    const resolved = await awaitAuthoringOperation(suitePending, signal, evaluationTimeoutMs, "receive");
+    if (runNormalized !== undefined) {
+      suiteResult = resolved as SuiteResult;
+      suiteOutcome = suiteResult.outcome;
+      modelStatus = suiteResult.conformance === "matched" ? "passed"
+        : suiteResult.conformance === "not_evaluated" ? "notRun" : suiteResult.outcome;
+      report = suiteResult.report;
+      if (suiteResult.outcome !== "passed") {
+        const kind = suiteResult.failure?.kind;
+        primary = Object.freeze({stage: "evaluate", family: kind === "negotiation" ? "modelNegotiation"
+          : kind === "cleanup" ? "cleanup" : kind === "configuration" ? "configuration" : "application",
+        error: Object.prototype.hasOwnProperty.call(suiteResult, "trustedError") ? suiteResult.trustedError : suiteResult.failure});
+      }
+    } else {
+      const completed = resolved as CompiledReplayReport;
+      if (completed?.status !== "completed" || !Number.isSafeInteger(completed.acceptedTraces) || completed.acceptedTraces < 0 ||
+          !Number.isSafeInteger(completed.acceptedSteps) || completed.acceptedSteps < 0) {
+        throw new TypeError("suite did not return a completed compiled replay report");
+      }
+      // Snapshot the public count fields before accepting a custom suite report;
+      // arbitrary getters cannot run later during public result projection.
+      report = Object.freeze({status: "completed", acceptedTraces: completed.acceptedTraces,
+        acceptedSteps: completed.acceptedSteps, actionCoverage: completed.actionCoverage, diagnostics: completed.diagnostics});
+      modelStatus = "passed";
     }
-    // Snapshot the public count fields before accepting a custom suite report;
-    // arbitrary getters cannot run later during public result projection.
-    report = Object.freeze({status: "completed", acceptedTraces: completed.acceptedTraces,
-      acceptedSteps: completed.acceptedSteps, actionCoverage: completed.actionCoverage, diagnostics: completed.diagnostics});
-    modelStatus = "passed";
   } catch (error) {
     const status = summaryStatus(error);
     if (stage === "evaluate") modelStatus = status;
@@ -300,15 +350,20 @@ async function evaluate<C extends EvaluationSuiteContext>(
     try { if (family === "application") family = errorFamily(error); } catch { /* Preserve arbitrary rejection. */ }
     primary = Object.freeze({stage, family, error});
   }
-  const status = primary === undefined ? "passed" : summaryStatus(primary.error);
+  const status = suiteOutcome ?? (primary === undefined ? "passed" : summaryStatus(primary.error));
   if (primary !== undefined) workflowAbort.abort(primary.error);
   const summary: OutcomeSummary = {status, ...(primary === undefined ? {} : {failureFamily: primary.family})};
   let cleanup = provider === undefined
-    ? providerFailureCleanup ?? await closeOwner(client, session, summary, deadlines.receiveMs, sessionOpenUnconfirmed)
+    ? providerFailureCleanup ?? await closeOwner(client, session, summary, cleanupMs, sessionOpenUnconfirmed)
     : await provider.close(summary);
   if (!suiteSettled && suitePending !== undefined) {
-    try { await awaitAuthoringOperation(suitePending.catch(() => undefined), undefined, deadlines.receiveMs, "close"); }
+    try { await awaitAuthoringOperation(suitePending.catch(() => undefined), undefined, cleanupMs, "close"); }
     catch (error) { cleanup = cleanupReceipt(cleanup.status === "failed" ? "failed" : "unconfirmed", [...cleanup.failures, error], cleanup.remainingResources); }
+  }
+  if (suiteResult !== undefined) {
+    report = suiteResult.report;
+    if (suiteResult.conformance === "matched") modelStatus = "passed";
+    else if (suiteResult.conformance === "not_evaluated") modelStatus = "notRun";
   }
   hosting = hostedHandle?.latest ?? hosting;
   if (hosting !== undefined && hosting.cleanup.status !== "succeeded") {
@@ -335,5 +390,6 @@ async function evaluate<C extends EvaluationSuiteContext>(
     model: Object.freeze({status: modelStatus, ...(report === undefined ? {} : {report})}),
     ...(primary === undefined ? {} : {primaryFailure: primary}), cleanup,
   });
-  return Object.freeze({receipt, publicResult: projectEvaluationReceipt(receipt, disclosure)});
+  return Object.freeze({receipt, publicResult: projectEvaluationReceipt(receipt, disclosure),
+    ...(suiteResult === undefined ? {} : {suiteResult})});
 }

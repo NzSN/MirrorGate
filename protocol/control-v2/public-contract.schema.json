@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "task",
+    "tools",
+    "environment"
+  ],
+  "properties": {
+    "schema": {
+      "const": "mirrorgate.public-contract/v2"
+    },
+    "task": {
+      "$ref": "schema.json#/$defs/PublicTask"
+    },
+    "tools": {
+      "type": "array",
+      "uniqueItems": true,
+      "maxItems": 128,
+      "items": {
+        "$ref": "schema.json#/$defs/PublicId"
+      }
+    },
+    "environment": {
+      "$ref": "public-environment.schema.json"
+    }
+  }
+}

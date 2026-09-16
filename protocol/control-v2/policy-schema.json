@@ -108,37 +108,110 @@
           "buildPlans": {
             "type": "array",
             "items": {
-              "type": "object",
-              "properties": {
-                "id": {
-                  "type": "string",
-                  "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,127}$"
-                },
-                "command": {
-                  "type": "array",
-                  "items": {
-                    "type": "string",
-                    "minLength": 1
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,127}$"
+                    },
+                    "command": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "minItems": 1,
+                      "maxItems": 256
+                    },
+                    "cwd": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "artifactPath": {
+                      "type": "string",
+                      "minLength": 1
+                    }
                   },
-                  "minItems": 1,
-                  "maxItems": 256
+                  "required": [
+                    "id",
+                    "command",
+                    "cwd",
+                    "artifactPath"
+                  ],
+                  "additionalProperties": false
                 },
-                "cwd": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "artifactPath": {
-                  "type": "string",
-                  "minLength": 1
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "id",
+                    "profile",
+                    "entryPoint",
+                    "sourceFiles",
+                    "runtimeSha256",
+                    "dependencies"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,127}$"
+                    },
+                    "profile": {
+                      "const": "node-esm/v1"
+                    },
+                    "entryPoint": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 1024
+                    },
+                    "sourceFiles": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 1024
+                      },
+                      "minItems": 1,
+                      "maxItems": 1024,
+                      "uniqueItems": true
+                    },
+                    "runtimeSha256": {
+                      "type": "string",
+                      "pattern": "^[a-f0-9]{64}$"
+                    },
+                    "dependencies": {
+                      "type": "array",
+                      "maxItems": 1,
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "rootId",
+                          "relativePath",
+                          "sha256"
+                        ],
+                        "properties": {
+                          "rootId": {
+                            "type": "string",
+                            "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,127}$"
+                          },
+                          "relativePath": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 1024
+                          },
+                          "sha256": {
+                            "type": "string",
+                            "pattern": "^[a-f0-9]{64}$"
+                          }
+                        }
+                      }
+                    }
+                  }
                 }
-              },
-              "required": [
-                "id",
-                "command",
-                "cwd",
-                "artifactPath"
-              ],
-              "additionalProperties": false
+              ]
             },
             "minItems": 0
           },

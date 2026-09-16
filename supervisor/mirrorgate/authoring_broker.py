@@ -54,12 +54,17 @@ def tool_definitions():
 
 class AuthoringBroker:
     def __init__(self, root: Path, *, contract: dict[str, Any], execute: Callable,
-                 submit: Callable, tool_ids: tuple[str, ...]):
+                 submit: Callable, tool_ids: tuple[str, ...], environment: dict[str, Any] | None = None):
         self.path = root / "broker.sock"
         self.token = secrets.token_hex(32)
         # Canonical owned copy; caller mutation never changes disclosed context.
         self.contract = strict_json(json.dumps(contract, ensure_ascii=True).encode())
-        self.contract["tools"] = list(tool_ids)
+        if environment is None:
+            self.contract["tools"] = list(tool_ids)
+        else:
+            self.contract = {"schema": "mirrorgate.public-contract/v2", "task": self.contract,
+                             "tools": list(tool_ids),
+                             "environment": strict_json(json.dumps(environment, ensure_ascii=True).encode())}
         self.execute = execute
         self.submit = submit
         self.tool_ids = frozenset(tool_ids)

@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "engines": { "node": "24.15.0" },
+  "engines": {
+    "node": "24.15.0"
+  },
   "exports": {
     "./control": {
       "types": "./sdk/node/control.d.mts",
@@ -16,6 +18,14 @@
     "./hosting-tool": {
       "types": "./integrations/agent-host/index.d.mts",
       "import": "./integrations/agent-host/index.mjs"
+    },
+    "./adapter-kit": {
+      "types": "./sdk/node/adapter-kit.d.mts",
+      "import": "./sdk/node/adapter-kit.mjs"
+    },
+    "./public-environment": {
+      "types": "./sdk/node/control-v2.d.mts",
+      "import": "./sdk/node/control-v2.mjs"
     }
   },
   "files": [

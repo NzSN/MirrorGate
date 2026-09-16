@@ -1,0 +1,152 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "profileId",
+    "stages",
+    "entryPoint",
+    "tools",
+    "limits"
+  ],
+  "properties": {
+    "schema": {
+      "const": "mirrorgate.public-environment/v1"
+    },
+    "profileId": {
+      "enum": [
+        "node-esm/v1",
+        "custom-build/v1",
+        "prebuilt/v1"
+      ]
+    },
+    "stages": {
+      "const": {
+        "authoring": {
+          "root": "/workspace",
+          "writable": [
+            "/workspace",
+            "/tmp",
+            "/scratch"
+          ]
+        },
+        "build": {
+          "root": "/source",
+          "writable": [
+            "/output",
+            "/tmp",
+            "/scratch"
+          ]
+        },
+        "execution": {
+          "root": "/artifact",
+          "writable": [
+            "/tmp",
+            "/scratch"
+          ]
+        }
+      }
+    },
+    "entryPoint": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024
+    },
+    "tools": {
+      "type": "array",
+      "maxItems": 128,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,127}$"
+      }
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sessionWallMs",
+        "executionWallMs",
+        "commandCpuSeconds",
+        "addressSpaceBytes",
+        "uidProcesses",
+        "openFiles",
+        "fileBytes",
+        "stdoutBytes",
+        "stderrBytes",
+        "snapshotFiles",
+        "snapshotBytes",
+        "tmpBytes",
+        "scratchBytes"
+      ],
+      "properties": {
+        "sessionWallMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "executionWallMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "commandCpuSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "addressSpaceBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "uidProcesses": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "openFiles": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "fileBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "stdoutBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "stderrBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "snapshotFiles": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "snapshotBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "tmpBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "scratchBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      }
+    }
+  }
+}

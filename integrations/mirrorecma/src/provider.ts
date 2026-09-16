@@ -9,6 +9,7 @@ import {
   loadGateSdk, makeSelection, waitSucceeded, cleanupTag,
   type SandboxCleanupStatus, type SandboxEvaluationOptions,
 } from "./sandbox.js";
+import { awaitAuthoringOperation } from "./authoring-wait.js";
 
 /** Trusted, process-local ownership. These objects are never serializable run handles. */
 export interface PreparedImplementationOptions {
@@ -18,6 +19,8 @@ export interface PreparedImplementationOptions {
   readonly policyId: string;
   readonly runtime: "node-v1" | "rust-v1";
   readonly deadlines?: Partial<ReplayDeadlines>;
+  /** Independent cleanup budget; never changes operator-enforced resource limits. */
+  readonly cleanupMs?: number;
   readonly onDiagnostic?: SandboxEvaluationOptions["onDiagnostic"];
 }
 
@@ -60,6 +63,7 @@ export async function createPreparedImplementationProvider(
   const session = options.session;
   const client = session.client;
   let deadlines = normalizeReplayDeadlines(undefined);
+  let cleanupMs = deadlines.receiveMs;
   const stopped = new AbortController();
   let closed = false;
   let used = false;
@@ -85,18 +89,19 @@ export async function createPreparedImplementationProvider(
         let timer: ReturnType<typeof setTimeout> | undefined;
         try {
           await Promise.race([dispose(), new Promise<never>((_resolve, reject) => {
-            timer = setTimeout(() => reject(new Error("prepared binding disposal deadline exceeded")), deadlines.receiveMs);
+            timer = setTimeout(() => reject(new Error("prepared binding disposal deadline exceeded")), cleanupMs);
           })]);
         } catch (error) { retainFailure(error); }
         finally { clearTimeout(timer); }
       }
       try {
         const operation = summary.status === "cancelled" || summary.status === "timedOut"
-          ? await session.cancel(summary.status === "timedOut" ? "deadline" : "user-cancel", { timeoutMs: deadlines.receiveMs })
-          : await session.close(summary, { timeoutMs: deadlines.receiveMs });
-        cleanup = await waitSucceeded(operation, undefined, deadlines.receiveMs);
+          ? await session.cancel(summary.status === "timedOut" ? "deadline" : "user-cancel", { timeoutMs: cleanupMs })
+          : await session.close(summary, { timeoutMs: cleanupMs });
+        cleanup = await waitSucceeded(operation, undefined, cleanupMs);
       } catch (error) { retainFailure(error); }
-      try { await client.close(); clientClosed = true; } catch (error) { retainFailure(error); }
+      try { await awaitAuthoringOperation(Promise.resolve().then(() => client.close()), undefined, cleanupMs, "close"); clientClosed = true; }
+      catch (error) { retainFailure(error); }
       // A trusted constructor may be delayed beyond Gate teardown. Its eventual
       // continuation still checks closed and disposes its binding; never await it
       // indefinitely or call a cancelled signal physical-cleanup confirmation.
@@ -105,7 +110,7 @@ export async function createPreparedImplementationProvider(
         let timer: ReturnType<typeof setTimeout> | undefined;
         factoriesJoined = await Promise.race([
           Promise.allSettled([...activeFactories]).then(() => true),
-          new Promise<false>(resolve => { timer = setTimeout(() => resolve(false), deadlines.receiveMs); }),
+          new Promise<false>(resolve => { timer = setTimeout(() => resolve(false), cleanupMs); }),
         ]).finally(() => clearTimeout(timer));
       }
       if (!factoriesJoined) retainFailure(new Error("prepared provider factory cleanup deadline exceeded"));
@@ -123,6 +128,11 @@ export async function createPreparedImplementationProvider(
 
   try {
     deadlines = normalizeReplayDeadlines(options.deadlines);
+    const requestedCleanupMs = options.cleanupMs ?? deadlines.receiveMs;
+    if (!Number.isSafeInteger(requestedCleanupMs) || requestedCleanupMs <= 0 || requestedCleanupMs > 0x7fffffff) {
+      throw new TypeError("cleanup budget is invalid");
+    }
+    cleanupMs = requestedCleanupMs;
     const model = prepareSandboxModel(options.model);
     const sdk = await loadGateSdk();
     const prepared = Object.freeze({ ...options.prepared });
@@ -148,7 +158,7 @@ export async function createPreparedImplementationProvider(
     // This adapter narrows the public SDK to the legacy facade's protocol shape;
     // all operations still run through the existing owner and public SDK methods.
     const original = makeSelection(model, session as unknown as Parameters<typeof makeSelection>[1], prepared, sdk, deadlines,
-      undefined, options.onDiagnostic, diagnosticFailures, assertActive, retainFailure);
+      undefined, options.onDiagnostic, diagnosticFailures, assertActive, retainFailure, cleanupMs);
     const key = {
       semanticDigest: model.semanticDigest,
       adapterId: original.adapterId,

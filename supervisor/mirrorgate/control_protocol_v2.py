@@ -248,3 +248,6 @@ def select_control_version(hello: dict, *, supported: tuple[int, ...] = (1, 2)) 
     if not candidates:
         v1._fail("VERSION_UNSUPPORTED", "bootstrap", "no supported control version")
     return max(candidates)
+
+# Negotiated through hello.requiredCapabilities; all existing records stay closed.
+PUBLIC_ENVIRONMENT_CAPABILITY = "hosting.public-environment-v1"

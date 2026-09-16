@@ -177,7 +177,7 @@ class HostResult:
 
 class AgentHost:
     def __init__(self, admission: AgentAdmission, *, execute, submit, tool_ids: tuple[str, ...],
-                 deadline: float, cancel_event: threading.Event, stop_authoring=None):
+                 deadline: float, cancel_event: threading.Event, stop_authoring=None, environment=None):
         self.admission = admission
         self.execute = execute
         self.submit = submit
@@ -185,6 +185,7 @@ class AgentHost:
         self.deadline = min(deadline, time.monotonic() + admission.limits["wallMs"] / 1000)
         self.cancel_event = cancel_event
         self.stop_authoring = stop_authoring
+        self.environment = environment
         self.root = None
         self.broker = None
         self.process = None
@@ -224,7 +225,7 @@ class AgentHost:
             with os.fdopen(fd, "wb") as dst:
                 dst.write(credential_bytes)
         self.broker = AuthoringBroker(self.root, contract=self.admission.task,
-                                     execute=self.execute, submit=self.submit, tool_ids=self.tool_ids)
+                                     execute=self.execute, submit=self.submit, tool_ids=self.tool_ids, environment=self.environment)
         (home / "config.toml").write_text(config_text(profile, home, support, self.broker.path, self.broker.token))
         (home / "config.toml").chmod(0o600)
         env = {"PATH": "/usr/bin:/bin", "HOME": str(self.root / "cwd"), "CODEX_HOME": str(home),

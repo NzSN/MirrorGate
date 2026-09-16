@@ -3,7 +3,9 @@
 This repository-local acceptance runner uses public Gate/MirrorECMA APIs and
 the shared application suite from the compatible MirrorECMA checkout. It is
 development tooling, not a published installed-consumer command. Gate's existing
-installed Counter consumer remains the installed-package acceptance path.
+installed suite consumer is the independent installed-package acceptance path.
+This runner uses the same `SuiteDefinition` as local application replay through
+`evaluateSuite`; it no longer reconstructs a model descriptor or registry tuple.
 
 Build MirrorECMA's core, examples and application generated bindings as described
 in `MirrorECMA/examples/application-validation/README.md`. Prepare Gate's existing
@@ -24,16 +26,21 @@ node integrations/mirrorecma/scripts/application-program-gate.mjs persistent-tra
 node integrations/mirrorecma/scripts/application-program-gate.mjs lease-service --receipt /private/new-lease.json
 ```
 
-The runner uses the existing local policy fixture builder with explicit model
-identity, runtime and submission roots. Each case gets frozen source/build
+The runner derives model identity from the generated handle and supplies only
+operator policy, the pinned runtime and approved submission roots. Its Node ESM
+profile selects exact source files without a custom build command or hooks. Each case gets frozen source/build
 handoff, a deferred worker admitted after model match, and the same trusted
 suite. Correct implementations must pass, behavioral mutants must reach their
 pinned mismatch, process exits must fail, hangs must time out, and cancellation
 must be distinct. Every case requires confirmed Gate cleanup and no remaining
-resource IDs. Private file-access canaries run in build and execution; these
-application checks supplement the full backend isolation gate.
+resource IDs. Private file-access canaries run during execution. The standard preparation
+profile copies approved files without executing application code; custom-build
+isolation remains covered by the backend gates.
 
-Receipts are exclusive-create mode `0600` files and retain private diagnostics.
+Receipts use the shared atomic, exclusive private receipt writer and retain
+private diagnostics. The parent directory must already exist, belong to the
+evaluator, and be mode `0700`; destination files are mode `0600`. Persistence
+failure fails the command independently after cleanup.
 They record the actual prepared artifact/source identities separately from the
 reference implementation digest. The three application models/traces/bindings
 stay evaluator-side. `PUBLIC-CONTRACT.md` is the separately reviewed author input.
@@ -54,9 +61,10 @@ node integrations/mirrorecma/scripts/application-program-gate.mjs lease-service 
 
 This mode runs one fresh author, not the mutant matrix. Start with the source
 matrix before authoring. The only application material supplied is the public
-contract and compiler-emitted public manifest; the fixed brief describes the
-Python authoring tool and build mounts.
-The implementer writes its own adapter and build script, then submits. The
+contract and generated public kit declarations/manifest; the public environment
+describes the approved Node ESM profile and tool.
+The implementer writes a self-contained adapter.mjs with Node built-ins, then
+submits. Preparation requires no build script. The
 evaluator verifies submission/preparation source identity and evaluates the
 fixed private model. A failed attempt is evidence, not permission to disclose
 private diagnostics or reopen a submitted workspace. Repairs require a fresh
@@ -66,3 +74,9 @@ The 2026-09-16 execution summary is in
 `Mirrors/Docs/application-validation-program.md`; it distinguishes source,
 actual-author and full-backend results. Runtime credentials and raw host logs
 remain outside these repositories.
+
+The migrated source matrices passed all 23 original cases (7 queue, 8 transfer,
+8 lease) with confirmed physical cleanup. Each correct case also satisfies the
+same suite acceptance requirements and exact matched counts as local replay.
+These runs did not include a new managed author or independent onboarding study;
+the optional host-profile path requires an approved operator profile.

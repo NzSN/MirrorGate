@@ -515,7 +515,8 @@
       "limit.address-space-v1",
       "limit.uid-processes-v1",
       "quota.aggregate-v1",
-      "hosting.fresh-agent-v1"
+      "hosting.fresh-agent-v1",
+      "hosting.public-environment-v1"
     ],
     "errorCodes": [
       "AGENT_EXITED",
@@ -664,5 +665,11 @@
     "runRetention": "session-lifetime",
     "cancelAfterCommit": "preserve-submission-and-join-host-cleanup",
     "reconnect": false
+  },
+  "publicEnvironment": {
+    "requiredCapability": "hosting.public-environment-v1",
+    "responseSchema": "mirrorgate.public-contract/v2",
+    "environmentSchema": "mirrorgate.public-environment/v1",
+    "delivery": "authoring public_contract only; unchanged publicTask fields"
   }
 }

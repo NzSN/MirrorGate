@@ -179,6 +179,8 @@ CI results are separate from local validation.
   authenticated loopback HTTP over the same approved suite and workflow.
 - [Node worker and proxy](docs/node-worker.md): `WorkerClient.launch`, native
   values, lifecycle, cancellation, and cleanup.
+- [Public Node integration](docs/application-integration-runtime.md): adapter kits,
+  immutable Node preparation, and negotiated public environments.
 - [Rust worker SDK](docs/rust-worker.md): reusable native adapter trait and
   correct/faulty Counter worker.
 - [MirrorECMA integration](integrations/mirrorecma/README.md): private model-side

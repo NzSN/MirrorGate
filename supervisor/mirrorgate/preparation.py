@@ -26,6 +26,7 @@ from .sandbox import GateSession, SandboxProcess
 from .source_view import (SourceViewCleanupError, SourceViewMaterialization,
                           SourceViewPolicy, materialize_source_view)
 from .worker_broker import BrokerError, WorkerReservation
+from .node_profile import copy_selected, runtime_binary, sha256
 
 
 OutputCallback = Callable[[str, bytes], None]
@@ -174,6 +175,9 @@ class BackendSession:
     source_view_receipt: SourceViewReceipt | None = None
     source_view_path: Path | None = None
     source_view_retained: bool = False
+    node_runtime_lease: FrozenLease | None = None
+    node_dependency_lease: FrozenLease | None = None
+    preparation_identity: dict[str, Any] | None = None
 
 
 def _submission(value: Any, policy: ControlPolicy, uid: int) -> tuple[str, str, Path, BuildPlan | None, bool]:
@@ -463,7 +467,7 @@ class ControlBackend:
         return tuple({"id": capability, "available": available,
                       "enforcedScope": "session" if available else "none", "limits": {},
                       **({} if available else {"reason": "AUDIT_UNAVAILABLE"})}
-                     for capability in ("hosting.fresh-agent-v1", "hosting.codex-v1"))
+                     for capability in ("hosting.fresh-agent-v1", "hosting.codex-v1", "hosting.public-environment-v1"))
 
     def open_session(self, *, owner: BackendOwner, policy_id: str, submission: dict[str, Any],
                      runtime: str, manifest_bytes: bytes,
@@ -518,6 +522,37 @@ class ControlBackend:
                                                  (shim.worker_path, shim.protocol_path),
                                                  session_owned, limits)
                 allocated_leases.append(shim_lease)
+            runtime_lease = None
+            dependency_lease = None
+            identity = None
+            if build_plan is not None and build_plan.profile == "node-esm/v1":
+                if runtime_plan.kind != "node" or runtime_plan.artifact_entry != build_plan.entry_point:
+                    raise AdmissionError("Node preparation entry must match admitted Node runtime")
+                binary = runtime_binary(runtime_plan)
+                runtime_lease = _freeze_exact_files(self._store, owner, binary.parent,
+                                                    (binary.name,), session_owned, limits)
+                allocated_leases.append(runtime_lease)
+                pinned_binary = runtime_lease._mount_path(owner) / binary.name
+                if sha256(pinned_binary) != build_plan.runtime_sha256:
+                    raise AdmissionError("Node runtime content identity mismatch")
+                dependencies = []
+                for dep_root, relative, expected_hash in build_plan.dependencies:
+                    if dep_root not in policy.roots:
+                        raise AdmissionError("Node dependency root is not approved")
+                    root = policy.roots[dep_root]
+                    dependency_path = root.resolve(owner.principal_uid, relative, "prebuilt")
+                    if not dependency_path.is_dir():
+                        raise AdmissionError("Node dependency root must be a directory")
+                    dependency_lease = self._store.freeze(owner, dependency_path,
+                        max_files=limits.snapshot_files, max_bytes=limits.snapshot_bytes)
+                    allocated_leases.append(dependency_lease)
+                    if dependency_lease.digest != expected_hash:
+                        raise AdmissionError("Node dependency content identity mismatch")
+                    dependencies.append(expected_hash)
+                identity = {"schema": "mirrorgate.node-preparation/v1", "profile": "node-esm/v1",
+                            "runtimeSha256": build_plan.runtime_sha256, "dependencies": dependencies}
+                runtime_plan = replace(runtime_plan, command=(
+                    "/runtime/mirrorgate-node-runtime/" + binary.name, *runtime_plan.command[1:]))
             state = BackendSession(
                 owner=owner, policy=policy, runtime=runtime_plan, limits=limits,
                 submission_kind=kind, input_path=input_path, build_plan=build_plan,
@@ -526,7 +561,8 @@ class ControlBackend:
                 node_shim_lease=shim_lease, owned=session_owned, source_view=source_view,
                 source_view_path=staged_view,
                 deadline=time.monotonic() + limits.session_wall_ms / 1000,
-                on_deadline=on_deadline,
+                on_deadline=on_deadline, node_runtime_lease=runtime_lease,
+                node_dependency_lease=dependency_lease, preparation_identity=identity,
             )
             state.prepare_done.set()
             state.authoring_done.set()
@@ -600,7 +636,8 @@ class ControlBackend:
                 "workers": int(state.reservation is not None),
                 "snapshots": sum(lease is not None for lease in (
                     state.manifest_lease, state.node_shim_lease,
-                    state.source_lease, state.artifact_lease)),
+                    state.source_lease, state.artifact_lease, state.node_runtime_lease,
+                    state.node_dependency_lease)),
             }
 
     def _sandbox_limits(self, state: BackendSession, *, execution: bool):
@@ -802,33 +839,38 @@ class ControlBackend:
                 output = state.owned / "build-output"
                 output.mkdir(mode=0o700)
                 assert state.build_plan is not None
-                gate = GateSession.from_frozen(
-                    profile="build", lease=source, owner=state.owner,
-                    runtime_mounts=state.runtime.runtime_mounts,
-                    limits=self._sandbox_limits(state, execution=False), output=output)
-                with state.lock:
-                    cancelled = state.closing or state.cleanup_event.is_set()
-                    if not cancelled:
-                        state.active_build_gate = gate
-                if cancelled:
-                    gate.close()
-                    raise BackendError("CANCELLED", "build", "build was cancelled")
-                try:
-                    process = gate.start(ToolRequest(state.build_plan.command, state.build_plan.cwd))
+                if state.build_plan.profile == "node-esm/v1":
+                    copy_selected(source._mount_path(state.owner), output, state.build_plan.source_files)
+                    if state.node_dependency_lease is not None:
+                        shutil.copytree(state.node_dependency_lease._mount_path(state.owner), output / "node_modules")
+                else:
+                    gate = GateSession.from_frozen(
+                        profile="build", lease=source, owner=state.owner,
+                        runtime_mounts=state.runtime.runtime_mounts,
+                        limits=self._sandbox_limits(state, execution=False), output=output)
                     with state.lock:
-                        state.active_build_process = process
-                    outcome = self._stream(process, emit_output, cancel_event, state.cleanup_event)
-                    if cancel_event.is_set() or state.cleanup_event.is_set() or outcome.reason == "cancelled":
+                        cancelled = state.closing or state.cleanup_event.is_set()
+                        if not cancelled:
+                            state.active_build_gate = gate
+                    if cancelled:
+                        gate.close()
                         raise BackendError("CANCELLED", "build", "build was cancelled")
-                    if outcome.returncode != 0:
-                        raise BackendError("BUILD_FAILED", "build", "approved build plan failed")
-                finally:
-                    gate.close()
-                    with state.lock:
-                        state.active_build_process = None
-                        state.active_build_gate = None
-                if cancel_event.is_set() or state.cleanup_event.is_set():
-                    raise BackendError("CANCELLED", "build", "build was cancelled")
+                    try:
+                        process = gate.start(ToolRequest(state.build_plan.command, state.build_plan.cwd))
+                        with state.lock:
+                            state.active_build_process = process
+                        outcome = self._stream(process, emit_output, cancel_event, state.cleanup_event)
+                        if cancel_event.is_set() or state.cleanup_event.is_set() or outcome.reason == "cancelled":
+                            raise BackendError("CANCELLED", "build", "build was cancelled")
+                        if outcome.returncode != 0:
+                            raise BackendError("BUILD_FAILED", "build", "approved build plan failed")
+                    finally:
+                        gate.close()
+                        with state.lock:
+                            state.active_build_process = None
+                            state.active_build_gate = None
+                    if cancel_event.is_set() or state.cleanup_event.is_set():
+                        raise BackendError("CANCELLED", "build", "build was cancelled")
                 artifact_path = output if state.build_plan.artifact_path == "." else output / state.build_plan.artifact_path
                 artifact = self._store.freeze(state.owner, artifact_path,
                                               max_files=state.limits.snapshot_files,
@@ -856,6 +898,9 @@ class ControlBackend:
                 if state.closing or state.cleanup_event.is_set():
                     raise BackendError("CANCELLED", "prepare", "preparation was cancelled")
                 state.prepared = prepared
+                if state.preparation_identity is not None:
+                    state.preparation_identity = {**state.preparation_identity,
+                                                  "sourceHash": source_hash, "artifactHash": artifact.digest}
             return prepared
         except BackendError:
             raise
@@ -885,6 +930,8 @@ class ControlBackend:
         if artifact is None or manifest is None:
             raise BackendError("STATE_INVALID", "authorize", "artifact has not been prepared")
         readonly = [(manifest, state.owner, "/runtime/mirrorgate-manifest")]
+        if state.node_runtime_lease is not None:
+            readonly.append((state.node_runtime_lease, state.owner, "/runtime/mirrorgate-node-runtime"))
         if shim is not None:
             readonly.append((shim, state.owner, "/runtime/mirrorgate-node-shim"))
         try:
@@ -1087,7 +1134,7 @@ class ControlBackend:
             else:
                 with state.lock:
                     state.reservation = None
-        for name in ("artifact_lease", "source_lease", "node_shim_lease", "manifest_lease"):
+        for name in ("artifact_lease", "source_lease", "node_shim_lease", "manifest_lease", "node_runtime_lease", "node_dependency_lease"):
             lease = getattr(state, name)
             if lease is not None:
                 try:

@@ -65,3 +65,57 @@ tests/CLI. Fixture installation may copy the suite and rewrite only import
 specifiers to installed public packages and local compiler output. Normal runs
 consume that installed application module/configuration and never compile client
 libraries, pack repositories or copy per-run host scripts.
+
+## Application suites and persistence
+
+`evaluateSuite(suite, options)` runs a public MirrorECMA `SuiteDefinition` through
+the same retained owner and requires a suite-capable MirrorECMA installation.
+Older supported clients retain their low-level APIs. Options carry `mirror`, the approved `environment`
+(`taskRef`, `policyId`, `runtime`, `gate`, optional tightened `limits` and
+`disclosure`), `submission`, and an optional approved `agent`. Generated
+`suite.model` metadata and its public-port binder supply the legacy model adapter
+internally. `timeouts` uses MirrorECMA's registration/action/receive/cleanup
+budgets. `cleanupMs` is passed independently to provider and owner cleanup; these
+wait budgets never change operator resource limits.
+
+An existing hosting-tool callback passes `hosted` with the original in-process
+owner instead of `submission`/`agent`. No reconnect, session adoption or second
+owner is permitted. Cleanup remains required when model negotiation prevents the
+factory from starting a worker.
+Managed authoring started by `evaluateSuite` requires the negotiated
+`hosting.public-environment-v1` capability. For an already owned hosting-tool
+handoff, its original owner selects this capability when opening the connection;
+the handoff cannot renegotiate an existing connection.
+
+The result uses `mirrorgate.suite-evaluation/v1`, with `outcome`, the unchanged v1
+`receipt` and `publicResult`, the normalized trusted `suiteResult` when execution
+entered the suite, and separate `persistence` evidence. A complete compiled report
+with `acceptance.status === "unmet"` is a failed evaluation; its conformance and
+legacy model status still record the matching replay. Local cooperative cleanup
+and Gate physical cleanup retain their separate scopes.
+
+Optional `receipt: {path, maxBytes?, signal?}` writes a combined
+`mirrorgate.suite-receipt/v1` envelope after physical cleanup. Persistence failure
+sets the new overall `outcome` to `failed` while preserving all original model,
+acceptance and physical cleanup evidence. The existing public allowlist is
+unchanged; normalized failures, action names, coordinates and arbitrary rejection
+text never become author-visible through this API.
+
+`writeTrustedReceipt(value, options)` is also available independently. On the
+supported Linux profile it requires an absolute file path inside an existing
+evaluator-owned parent that is not writable by other users. Every parent path
+component is opened without following symbolic links and publication is anchored
+to that directory inode. A private mode-0600 temporary file is completely written
+and synchronized, then an exclusive hard link publishes it atomically. Both
+temporary and published files have mode 0600; existing files and symlinks are
+never overwritten. Cleanup removes temporary files on interruption or failure.
+Cancellation before publication leaves no record; a completed publication is
+committed even if a later cancellation arrives. This is complete-record
+publication, not a durable-supervisor-restart guarantee.
+
+Serialization reads bounded own data properties without invoking accessors,
+`toJSON`, or object coercion. Cycles, inaccessible properties, unsupported
+primitives and truncation receive explicit markers; a final byte limit rejects
+oversized records. Receipts are trusted private evidence, never a disclosure
+format. Synchronous hostile proxy traps cannot be forcibly preempted in the
+evaluator process; do not execute untrusted application code there.

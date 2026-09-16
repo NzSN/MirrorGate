@@ -22,7 +22,7 @@ test('packed private package exposes typed control and worker subpaths to an iso
   await run('tar', ['-xzf', archive, '--strip-components=1', '-C', packageRoot]);
   const metadata = JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8'));
   assert.equal(metadata.private, true);
-  assert.deepEqual(Object.keys(metadata.exports), ['./control', './worker', './hosting-tool']);
+  assert.deepEqual(Object.keys(metadata.exports), ['./control', './worker', './hosting-tool', './adapter-kit', './public-environment']);
   const compatibility = JSON.parse(await readFile(join(packageRoot, 'sdk/compatibility.json'), 'utf8'));
   assert.equal(compatibility.sdkVersion, metadata.version);
   assert.deepEqual(compatibility.controlVersions, [1, 2]);
@@ -37,6 +37,9 @@ test('packed private package exposes typed control and worker subpaths to an iso
   const runtime = `
     import * as control from 'mirrorgate/control';
     import * as worker from 'mirrorgate/worker';
+    import {generateAdapterKit} from 'mirrorgate/adapter-kit';
+    import {validatePublicContract} from 'mirrorgate/public-environment';
+    if (typeof generateAdapterKit !== 'function' || typeof validatePublicContract !== 'function') throw new Error('missing public authoring APIs');
     if (typeof control.ControlClient !== 'function') throw new Error('missing ControlClient');
     if (typeof worker.WorkerClient !== 'function') throw new Error('missing WorkerClient');
     if (typeof worker.createManagedWorker !== 'function') throw new Error('missing managed worker factory');
@@ -47,6 +50,9 @@ test('packed private package exposes typed control and worker subpaths to an iso
   await assert.rejects(run(process.execPath, ['--input-type=module', '--eval', "import 'mirrorgate'"], {cwd: consumer}), error => error.stderr.includes('ERR_PACKAGE_PATH_NOT_EXPORTED'));
 
   const source = `
+    import {generateAdapterKit, checkAdapterKit, checkAdapterStructure, type KitIdentity} from 'mirrorgate/adapter-kit';
+    import {PUBLIC_ENVIRONMENT_CAPABILITY, validatePublicContract, type PublicEnvironment} from 'mirrorgate/public-environment';
+    void generateAdapterKit; void checkAdapterKit; void checkAdapterStructure; void PUBLIC_ENVIRONMENT_CAPABILITY; void validatePublicContract;
     import {ControlClient, type ControlSession, type Prepared, type RequiredMatchAttestation} from 'mirrorgate/control';
     import {WorkerClient, createManagedWorker, createPublicManifest, toWorkerValue, fromWorkerValue, type PublicManifest, type PublicModelDescriptor} from 'mirrorgate/worker';
     const attestation: RequiredMatchAttestation = {

@@ -359,3 +359,140 @@ test.each([
   expect(outcome.receipt.cleanup.status).toBe("unconfirmed"); expect(outcome.publicResult.cleanup).toBe("unconfirmed");
   expect(f.calls).toContain("client.close"); expect(f.calls).not.toContain("prepare");
 });
+
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { defineSuite, ReplayCancelledError, type SuiteModel } from "mirrorecma";
+import { evaluateSuiteWithDependencies } from "../src/suite.js";
+
+describe("normalized application suites", () => {
+  const directories: string[] = [];
+  afterEach(async () => { await Promise.all(directories.splice(0).map(path => rm(path, {recursive: true, force: true}))); });
+  async function suiteSetup(requiredActions: readonly string[] = []) {
+    const f = setup();
+    const directory = await mkdtemp(join(tmpdir(), "gate-suite-")); directories.push(directory);
+    const specPath = join(directory, "PrivateCounter.tla"), tracePath = join(directory, "private.itf.json");
+    await writeFile(specPath, "---- MODULE PrivateCounter ----\n====\n");
+    const initial = {action_taken: "init", count: {"#bigint": "0"}, parameters: {stride: {"#bigint": "0"}}};
+    await writeFile(tracePath, JSON.stringify({states: [initial]}));
+    const model: SuiteModel = {
+      schema: "mirrors.suite-model/v1", nativeRepresentation: "mirrors.node-native/v1",
+      semanticDigest: f.plan.model.metadata.semanticDigest,
+      targetProfile: CounterAsyncTargetProfile, stateComputerContractVersion: CounterAsyncStateComputerContractVersion,
+      descriptor: f.plan.model.descriptor, metadata: CounterModelInterface, publicManifest: CounterPublicManifest,
+      bindPublicPort: bindCounterAsyncPublicPort, bindLocal: () => {throw new Error("Gate must use public port");},
+    };
+    const suite = defineSuite({id: "private-suite", adapterId: f.plan.model.adapterId, model,
+      replay: {kind: "corpus", config: {...f.plan.suite.context.modelConfig, specPath}, traces: [tracePath]},
+      acceptance: {requiredActions}});
+    const options = {
+      environment: {taskRef: f.plan.taskRef, policyId: f.plan.policyId, runtime: f.plan.runtime, gate: f.plan.gate},
+      submission: f.plan.submission,
+      mirror: new ScriptedTransport([matched(model.semanticDigest),
+        JSON.stringify({proto_step: "initial_state", action: "init", state: initial}),
+        JSON.stringify({proto_step: "step_ok"}), JSON.stringify({proto_step: "all_steps_done"})]),
+      timeouts: {registrationMs: 100, receiveMs: 100, actionMs: 100, cleanupMs: 250},
+    };
+    return {...f, suite, suiteOptions: options, directory};
+  }
+
+  test.each([false, true])("retains normalized acceptance across completed-report seam (unmet=%p)", async unmet => {
+    const f = await suiteSetup(unmet ? ["Tick"] : []);
+    const result = await evaluateSuiteWithDependencies(f.suite, f.suiteOptions, f.dependencies);
+    expect(result.suiteResult?.conformance).toBe("matched");
+    expect(result.suiteResult?.acceptance.status).toBe(unmet ? "unmet" : "met");
+    expect(result.suiteResult?.report?.status).toBe("completed");
+    expect(result.outcome).toBe(unmet ? "failed" : "passed");
+    expect(result.receipt.status).toBe(result.outcome);
+    expect(result.receipt.model.status).toBe("passed");
+    expect(result.receipt.cleanup.status).toBe("confirmed");
+    expect(f.calls.filter(call => call === "client.close")).toHaveLength(1);
+    expect(Object.keys(result.publicResult).sort()).toEqual(["cleanup", "runRef", "schema", "status"]);
+    expect(JSON.stringify(result.publicResult)).not.toMatch(/private|Tick|traceIndex|expected/);
+  });
+
+  test("negotiation denial never launches a worker and closes its prepared session", async () => {
+    const f = await suiteSetup();
+    f.suiteOptions.mirror = new ScriptedTransport([mismatched(f.suite.model.semanticDigest)]);
+    const result = await evaluateSuiteWithDependencies(f.suite, f.suiteOptions, f.dependencies);
+    expect(result.outcome).toBe("failed");
+    expect(result.suiteResult?.conformance).toBe("not_evaluated");
+    expect(result.receipt.cleanup.status).toBe("confirmed");
+    expect(f.calls).not.toContain("acquire"); expect(f.calls).toContain("session.close");
+  });
+
+  test("hosted convenience retains the original owner without a second connection", async () => {
+    const f = await suiteSetup(); const completions: unknown[] = [];
+    const {submission: _submission, ...options} = f.suiteOptions;
+    const result = await evaluateSuiteWithDependencies(f.suite, {...options,
+      hosted: {client: f.client as never, session: f.session as never, taskRef: f.plan.taskRef,
+        run: f.hosting as never, signal: new AbortController().signal, completeCleanup: value => {completions.push(value);}}},
+    {connect: async () => {throw new Error("must retain hosted owner");}});
+    expect(result.outcome).toBe("passed"); expect(f.calls).not.toContain("open");
+    expect(completions).toEqual([{status: "succeeded"}]);
+  });
+
+  test("physical cleanup uses cleanupMs independently of receiveMs", async () => {
+    const f = await suiteSetup(); const observed: number[] = [];
+    f.session.close = async (...args: unknown[]) => {
+      observed.push((args[1] as {timeoutMs: number}).timeoutMs);
+      await new Promise(resolve => setTimeout(resolve, 30));
+      return {wait: async () => ({operationId: 1, status: "succeeded", result: {phase: "closed", cleanupStatus: "succeeded", remainingResources: []}})};
+    };
+    const result = await evaluateSuiteWithDependencies(f.suite, {...f.suiteOptions,
+      timeouts: {...f.suiteOptions.timeouts, receiveMs: 10, cleanupMs: 200}}, f.dependencies);
+    expect(observed).toEqual([200]); expect(result.outcome).toBe("passed");
+  });
+
+  test("receipt persistence follows physical cleanup and preserves failure as separate evidence", async () => {
+    const f = await suiteSetup(); const path = join(f.directory, "receipt.json");
+    await writeFile(path, "existing receipt", {mode: 0o600});
+    const result = await evaluateSuiteWithDependencies(f.suite, {...f.suiteOptions, receipt: {path}}, f.dependencies);
+    expect(result.outcome).toBe("failed"); expect(result.persistence.status).toBe("failed");
+    expect(result.suiteResult?.outcome).toBe("passed"); expect(result.receipt.status).toBe("passed");
+    expect(result.receipt.cleanup.status).toBe("confirmed"); expect(f.calls).toContain("client.close");
+    expect(await readFile(path, "utf8")).toBe("existing receipt");
+    expect((await readdir(f.directory)).some(name => name.startsWith(".receipt-"))).toBe(false);
+  });
+
+  test("physical cleanup failure leaves matched and accepted evidence intact", async () => {
+    const f = await suiteSetup();
+    f.session.close = async () => {throw new Error("private cleanup failure");};
+    const result = await evaluateSuiteWithDependencies(f.suite, f.suiteOptions, f.dependencies);
+    expect(result.outcome).toBe("failed"); expect(result.suiteResult?.outcome).toBe("passed");
+    expect(result.suiteResult?.acceptance.status).toBe("met"); expect(result.receipt.model.status).toBe("passed");
+    expect(result.receipt.cleanup.status).toBe("unconfirmed");
+    expect(JSON.stringify(result.publicResult)).not.toContain("private");
+  });
+
+  test.each(["authoring", "prepare", "negotiation", "factory", "replay", "disposal"] as const)(
+    "cancellation during %s joins fresh owner cleanup and retains trusted evidence", async stage => {
+      const f = await suiteSetup(); const abort = new AbortController();
+      const cancel = () => {abort.abort("private cancellation reason"); throw new ReplayCancelledError(abort.signal.reason);};
+      let overrides: Partial<typeof f.suiteOptions> & {agent?: unknown} = {};
+      if (stage === "authoring") {
+        overrides = {submission: {kind: "source", input: {rootId: "submission", relativePath: "counter"}, buildPlanId: "copy", authoring: true},
+          agent: {profileId: "approved-agent", publicTask: {instructions: "Approved task", files: []}}};
+        f.session.startAgent = async () => cancel();
+      } else if (stage === "prepare") f.session.prepare = async () => cancel();
+      else if (stage === "negotiation") {
+        f.suiteOptions.mirror = {send() {cancel();}, close: async () => 0,
+          [Symbol.asyncIterator]: () => ({next: async () => ({value: "", done: true})})} as never;
+      } else if (stage === "factory") f.session.authorize = async () => cancel();
+      else if (stage === "replay") f.worker.invoke = async () => cancel();
+      else f.worker.close = async () => {
+        abort.abort("private cancellation during disposal");
+        await new Promise(resolve => setTimeout(resolve, 20));
+      };
+      const result = await evaluateSuiteWithDependencies(f.suite,
+        {...f.suiteOptions, ...overrides, signal: abort.signal} as Parameters<typeof evaluateSuiteWithDependencies>[1], f.dependencies);
+      expect(result.outcome).toBe("cancelled"); expect(result.receipt.cleanup.status).toBe("confirmed");
+      expect(f.calls.filter(call => call === "client.close")).toHaveLength(1);
+      expect(f.calls).toContain("session.cancel");
+      if (stage === "negotiation" || stage === "factory") expect(f.calls).not.toContain("acquire");
+      if (stage === "replay" || stage === "disposal") expect(result.suiteResult).toBeDefined();
+      if (stage === "disposal") expect(result.suiteResult?.conformance).toBe("matched");
+      expect(JSON.stringify(result.publicResult)).not.toContain("private");
+    });
+});

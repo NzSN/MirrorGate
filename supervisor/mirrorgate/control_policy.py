@@ -230,9 +230,40 @@ class BuildPlan:
     command: tuple[str, ...]
     cwd: str
     artifact_path: str
+    profile: str = "custom-build/v1"
+    source_files: tuple[str, ...] = ()
+    runtime_sha256: str | None = None
+    dependencies: tuple[tuple[str, str, str], ...] = ()
+    entry_point: str | None = None
 
     @classmethod
-    def parse(cls, value: Any) -> "BuildPlan":
+    def parse(cls, value: Any, *, allow_node_esm: bool = False) -> "BuildPlan":
+        if type(value) is dict and "profile" in value:
+            if not allow_node_esm:
+                raise AdmissionError("Node preparation requires control policy v2")
+            raw = _object(value, {"id", "profile", "entryPoint", "sourceFiles", "runtimeSha256", "dependencies"}, "Node build plan")
+            if raw["profile"] != "node-esm/v1":
+                raise AdmissionError("unsupported preparation profile")
+            entry = checked_relative_path(raw["entryPoint"], "Node entryPoint")
+            files = tuple(checked_relative_path(item, "Node source file") for item in _array(raw["sourceFiles"], "Node sourceFiles", nonempty=True))
+            if len(files) > 1024 or len(files) != len(set(files)) or entry not in files or not entry.endswith(".mjs"):
+                raise AdmissionError("Node source selection must uniquely include an ESM entry")
+            if any(path == "." or path == "node_modules" or path.startswith("node_modules/") for path in files):
+                raise AdmissionError("Node dependencies require an approved dependency root")
+            def digest(value):
+                if type(value) is not str or re.fullmatch(r"[0-9a-f]{64}", value) is None:
+                    raise AdmissionError("Node content identity must be lowercase SHA256")
+                return value
+            dependencies = _array(raw["dependencies"], "Node dependencies")
+            if len(dependencies) > 1:
+                raise AdmissionError("Node profile permits one approved node_modules tree")
+            deps = []
+            for dependency in dependencies:
+                dep = _object(dependency, {"rootId", "relativePath", "sha256"}, "Node dependency")
+                deps.append((_id(dep["rootId"], "dependency root ID"), checked_relative_path(dep["relativePath"]), digest(dep["sha256"])))
+            return cls(_id(raw["id"], "build plan id"), (), ".", ".", "node-esm/v1", files,
+                       digest(raw["runtimeSha256"]), tuple(deps), entry)
+
         raw = _object(value, {"id", "command", "cwd", "artifactPath"}, "build plan")
         return cls(_id(raw["id"], "build plan id"), _command(raw["command"], "build command"),
                    checked_relative_path(raw["cwd"], "build cwd"),
@@ -354,7 +385,7 @@ class ControlPolicy:
         raw = _object(value, {"id", "roots", "buildPlans", "tools", "runtimes", "limits"}, "policy")
         roots = _unique([ApprovedRoot.parse(item, allow_source_view=allow_source_view)
                          for item in _array(raw["roots"], "roots", nonempty=True)], "root")
-        builds = _unique([BuildPlan.parse(item) for item in _array(raw["buildPlans"], "buildPlans")], "build plan")
+        builds = _unique([BuildPlan.parse(item, allow_node_esm=allow_source_view) for item in _array(raw["buildPlans"], "buildPlans")], "build plan")
         tools = _unique([ToolPlan.parse(item) for item in _array(raw["tools"], "tools")], "tool")
         runtimes = _unique([RuntimePlan.parse(item) for item in _array(raw["runtimes"], "runtimes", nonempty=True)], "runtime")
         return cls(_id(raw["id"], "policy id"), roots, builds, tools, runtimes, ControlLimits.parse(raw["limits"]))

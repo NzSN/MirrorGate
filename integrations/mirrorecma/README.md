@@ -1,5 +1,22 @@
 # Trusted MirrorECMA evaluator integration
 
+Application integrations can call `evaluateSuite(suite, {environment, submission,
+mirror, timeouts, receipt})` using the compiler's generated suite model and an
+ordinary MirrorECMA suite. This preserves acceptance requirements, joins physical
+cleanup and optionally persists owner-only trusted evidence. See the
+[suite and receipt contract](WORKFLOW.md#application-suites-and-persistence).
+
+`MIRRORECMA_ROOT=/absolute/MirrorECMA MIRRORS_ROOT=/absolute/Mirrors npm run
+test:suite` prepares one installed application, moves it, then executes twice
+with all three source checkouts hidden and networking disabled. It exercises the
+generated model/adapter kit, standard `node-esm/v1` preparation, real correct and
+faulty workers, process exit, CPU hang, disposal failure, negotiation denial,
+unmet coverage, cancellation, safe receipts and receipt-write failure. It requires
+working Bubblewrap and prepared compiler/Mirrors binaries. Preparation performs
+all packing, compilation, kit and corpus work; repeated evaluation does none of
+those operations. This gate uses submitted fixture implementations, not a live
+coding agent.
+
 `mirrorgate-mirrorecma` is the optional, Gate-owned TypeScript integration. Its
 source extraction, prepared/control-v1 provider, hosted-v2 local workflow and
 trusted/public receipts are integrated and verified in the destination. The

@@ -1,0 +1,58 @@
+{
+  "schema": "mirrorgate.public-contract/v2",
+  "task": {
+    "instructions": "Implement the approved public port.",
+    "files": []
+  },
+  "tools": [
+    "node"
+  ],
+  "environment": {
+    "schema": "mirrorgate.public-environment/v1",
+    "profileId": "node-esm/v1",
+    "stages": {
+      "authoring": {
+        "root": "/workspace",
+        "writable": [
+          "/workspace",
+          "/tmp",
+          "/scratch"
+        ]
+      },
+      "build": {
+        "root": "/source",
+        "writable": [
+          "/output",
+          "/tmp",
+          "/scratch"
+        ]
+      },
+      "execution": {
+        "root": "/artifact",
+        "writable": [
+          "/tmp",
+          "/scratch"
+        ]
+      }
+    },
+    "entryPoint": "adapter.mjs",
+    "tools": [
+      "node"
+    ],
+    "limits": {
+      "sessionWallMs": 128,
+      "executionWallMs": 128,
+      "commandCpuSeconds": 128,
+      "addressSpaceBytes": 128,
+      "uidProcesses": 128,
+      "openFiles": 128,
+      "fileBytes": 128,
+      "stdoutBytes": 128,
+      "stderrBytes": 128,
+      "snapshotFiles": 128,
+      "snapshotBytes": 128,
+      "tmpBytes": 128,
+      "scratchBytes": 128
+    }
+  }
+}
