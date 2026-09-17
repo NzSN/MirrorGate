@@ -41,8 +41,9 @@ does not launch agents, accept prompts, build artifacts, or manage Gate.
 
 This [implementation boundary](https://github.com/NzSN/MirrorECMA/blob/main/docs/implementation-boundary-design.md)
 is implemented by the external `mirrorgate-mirrorecma` package and coordinated
-MirrorECMA 2 cutover. New consumers use `evaluateImplementation` or the prepared
-provider; the extracted facade remains in the package's `/legacy` entry point.
+MirrorECMA 2 cutover. New application consumers pass a generated MirrorECMA suite
+to `evaluateSuite`. `evaluateImplementation` and prepared providers remain
+lower-level composition seams; the extracted facade remains in `/legacy`.
 The Gate-owned hosting tool is the primary agent-facing route, with direct
 native SDK automation also available. Destination verification and the
 coordinated model/client gates are recorded in the validation report.

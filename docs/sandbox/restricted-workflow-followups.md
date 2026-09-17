@@ -1,7 +1,14 @@
 # Restricted implementation workflow follow-ups
 
-Status: findings recorded 2026-09-10. Every item under **Proposed work** is
-unimplemented unless a later document and executable gate say otherwise.
+Status: findings recorded 2026-09-10. Application-integration delivery completed
+G1 (public environment), G2 (Node adapter kit), G5 (trusted receipt writer), and
+G7 (shared projected-collection vectors and real suite coverage) on 2026-09-16–17.
+See [application integration runtime](../application-integration-runtime.md),
+[suite workflow](../../integrations/mirrorecma/WORKFLOW.md), and the
+[Mirrors execution record](https://github.com/NzSN/Mirrors/blob/main/Docs/application-integration-progress.md).
+G3, G4, and G6 remain proposed follow-ups unless a later document and executable
+gate say otherwise. The sections below preserve the original findings and
+acceptance requirements.
 
 ## Evidence that produced these findings
 

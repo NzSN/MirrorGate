@@ -23,6 +23,14 @@ tool's MCP protocol harness. A real outside Codex coordinator then registered
 the same installed MCP adapter and completed a real implementer/MBT/cleanup run. The [validation report](docs/managed-workflow-validation.md)
 records exact versions, commands and evidence. No package publication is claimed.
 
+For a new Node application, generate the public implementation kit through
+`mirrorgate/adapter-kit`, select the admitted `node-esm/v1` profile and
+`hosting.public-environment-v1` capability, and run the application's ordinary
+MirrorECMA `SuiteDefinition` through Gate-owned `evaluateSuite`. Start with the
+[application integration runtime](docs/application-integration-runtime.md) and
+[suite workflow](integrations/mirrorecma/WORKFLOW.md). Lower-level composition
+and `/legacy` interfaces remain available for specialized or existing consumers.
+
 ## Design documents
 
 The [design index](docs/README.md) records the architecture discussion and links
@@ -47,8 +55,9 @@ evaluation workflow, retains the owner connection, and combines result/cleanup
 evidence. All three responsibilities are covered by the
 [managed workflow design](docs/managed-workflow-design.md).
 Agent prompts, launch, builds, and Gate lifecycle stay outside MirrorECMA's
-core. The extracted `mirrorgate-mirrorecma` package supplies `evaluateImplementation`,
-prepared providers and the compatibility `/legacy` entry point. MirrorECMA 2
+core. The extracted `mirrorgate-mirrorecma` package supplies `evaluateSuite` for
+new applications, lower-level `evaluateImplementation` / prepared providers,
+and the compatibility `/legacy` entry point. MirrorECMA 2
 removes the Gate-specific core exports. The [task ledger](docs/agent-hosting-tasks.md)
 records completed destination and actual-framework acceptance evidence.
 
@@ -173,8 +182,10 @@ CI results are separate from local validation.
   profiles and public tasks through Node `startAgent` or C++ `start_agent`.
 - [Standard hosting tool](integrations/agent-host/README.md): configure/register
   `mirrorgate-hosting-tool`; applications do not write a launcher or broker.
-- [Local evaluation workflow](integrations/mirrorecma/README.md):
-  `evaluateImplementation` and original-owner `evaluateHostedSubmission`.
+- [Application suite workflow](integrations/mirrorecma/README.md): generated
+  suites through `evaluateSuite`, including original-owner hosting handoff.
+- [Lower-level evaluation composition](integrations/mirrorecma/WORKFLOW.md):
+  `evaluateImplementation`, prepared providers, and `evaluateHostedSubmission`.
 - [Optional evaluation service](integrations/mirrorecma/service/README.md):
   authenticated loopback HTTP over the same approved suite and workflow.
 - [Node worker and proxy](docs/node-worker.md): `WorkerClient.launch`, native

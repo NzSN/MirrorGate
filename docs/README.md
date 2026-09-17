@@ -17,6 +17,7 @@ framework registration/dispatch passed. No release or hosted-CI claim is implied
 
 | Layer | Status / authoritative reference |
 | --- | --- |
+| Node application integration | Generated adapter kit, `node-esm/v1`, negotiated public environment, `evaluateSuite`, receipts, installed/offline consumers and application matrices accepted locally; [runtime](application-integration-runtime.md), [suite workflow](../integrations/mirrorecma/WORKFLOW.md) |
 | Control v1, native SDKs, restricted tool/build/worker execution | Existing experimental profile remains compatible; [compatibility](compatibility.md) records boundaries |
 | Control v2 and managed implementer | Implemented; [v2 contract](agent-hosting-control-v2.md), actual Codex audit and fresh author through the installed MCP protocol harness |
 | Filtered source views | Implemented for policy-v2 source roots; [supervisor contract](sandbox/supervisor-design.md#filtered-source-views) and [acceptance record](sandbox/source-views-plan.md#completion-evidence) |
@@ -36,11 +37,14 @@ compiler features do not change Gate's control or worker protocols.
 
 | Document | Read when working on |
 | --- | --- |
+| [Application integration runtime](application-integration-runtime.md) | Public adapter kit, `node-esm/v1`, dependency admission and `hosting.public-environment-v1` |
+| [MirrorECMA suite integration](../integrations/mirrorecma/README.md) | Default `evaluateSuite` path, installed consumer, trusted receipts and legacy migration |
+| [Suite workflow contract](../integrations/mirrorecma/WORKFLOW.md) | Suite ownership, physical cleanup, persistence and lower-level composition seams |
 | [Architecture](architecture.md) | Repository responsibilities, trusted evaluation, shared infrastructure, and language shims |
 | [Sandbox documentation](sandbox/README.md) | Supervisor, isolation walkthrough, backend, policy, blind-validation, and follow-up index |
 | [Supervisor design](sandbox/supervisor-design.md) | Trusted admission, snapshots, sandbox launch, managed lifetime, worker ownership, and cleanup |
 | [Managed workflow](managed-workflow-design.md) | Gate-owned R1 agent hosting, R2 sandbox/artifacts, and R3 trusted local MBT integration; caller inputs and task mapping |
-| [Restricted workflow follow-ups](sandbox/restricted-workflow-followups.md) | Dated application findings and proposed build-contract, adapter-kit, repair, cleanup, receipt, disclosure, and projected-collection work |
+| [Restricted workflow follow-ups](sandbox/restricted-workflow-followups.md) | Dated findings: G1/G2/G5/G7 delivered by application integration; G3/G4/G6 remain separate follow-ups |
 | [Agent hosting design](agent-hosting-design.md) | Direct coordinator-to-Gate authoring, hosted implementer, external MBT integration, and restricted lifecycle |
 | [Agent hosting tasks](agent-hosting-tasks.md) | Implementation assignments, dependencies, contract prerequisites, owned paths, and acceptance evidence |
 | [Hosting contract decisions](agent-hosting-contract-decisions.md) | Historical AH1.1 decisions underlying the implemented v2 contract |

@@ -32,7 +32,34 @@ The integration imports only the public `mirrorecma`, `mirrorgate/control` and
 generic binding lifetime; Gate owns worker admission, physical cleanup and this
 integration. Neither the Gate supervisor nor basic SDK depends on MirrorECMA.
 
-## Local workflow
+## Application suite workflow
+
+New applications pass the same immutable suite used for local `runSuite` replay:
+
+```ts
+import { evaluateSuite } from "mirrorgate-mirrorecma";
+
+const outcome = await evaluateSuite(suite, {
+  mirror: approvedMirror,
+  environment: approvedEnvironment,
+  submission: approvedSubmission,
+  timeouts: approvedTimeouts,
+  receipt: { path: "/private/new-suite-receipt.json" },
+});
+```
+
+The suite carries the generated model handle, checked corpus, and acceptance
+requirements. Gate derives the public-port provider, retains the original owner,
+joins physical cleanup, and preserves coverage failure separately from model
+mismatch. Managed authoring adds an approved agent request; an already hosted
+handoff passes its original in-process owner rather than reconnecting.
+
+The [installed Counter consumer](examples/counter/README.md) and `npm run
+test:suite` exercise this default through packed packages and relocated/offline
+execution. Preparation performs compilation and kit generation; evaluation does
+not rebuild or repack framework repositories.
+
+## Lower-level composition workflow
 
 `evaluateImplementation(plan, options)` owns the complete local composition:
 connect to Gate, start an approved managed author when requested, wait for explicit
@@ -74,11 +101,8 @@ The integration uses the original dedicated owner, rechecks the committed source
 and explicitly hands back cleanup through the trusted `completeCleanup` callback.
 It neither reconstructs a run handle nor reconnects to adopt a submitted session.
 
-The [installed Counter consumer](examples/counter/README.md) supplies only its
-configuration, generated contract and the same generic suite as MirrorECMA's
-source tests/CLI. Normal evaluation does no client compilation or repository
-packing. The optional [evaluation service](service/README.md) invokes this same
-workflow and publishes only its public result.
+The optional [evaluation service](service/README.md) uses this lower-level
+approved-plan composition and publishes only its public result.
 
 ## Prepared implementation provider
 

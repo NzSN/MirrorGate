@@ -1,8 +1,28 @@
-# Local evaluation workflow contract
+# Gate evaluation workflow contract
 
 AH8.6/AH8.7 API contract, 2026-09-09. This document fixes the optional integration's
 local composition seam. Gate's existing supervisor and public SDK remain the only
 owners of authoritative hosting, submission, preparation and worker transitions.
+
+## Default application suite workflow
+
+New applications call `evaluateSuite(suite, options)` with the same public
+MirrorECMA `SuiteDefinition` used by local `runSuite`. Options select `mirror`,
+an approved Gate `environment`, a source/prebuilt `submission` or original-owner
+`hosted` handoff, optional approved `agent`, execution timeouts, and optional
+trusted receipt persistence.
+
+The generated `suite.model` supplies exact interface identity and the public-port
+binder. Gate derives the lower-level plan/provider internally, retains the owner
+through physical cleanup, and returns `mirrorgate.suite-evaluation/v1`. A matched
+replay with unmet acceptance remains failed coverage, not a model mismatch.
+Managed authoring requires `hosting.public-environment-v1`.
+
+See [application suite result and persistence details](#application-suite-result-and-persistence-details)
+below. Existing consumers that need custom plan composition use the lower-level
+interfaces in the next section; former sandbox-facade consumers use `/legacy`.
+
+## Lower-level composition workflow
 
 `evaluateImplementation(plan, options)` accepts trusted configuration:
 
@@ -66,7 +86,7 @@ specifiers to installed public packages and local compiler output. Normal runs
 consume that installed application module/configuration and never compile client
 libraries, pack repositories or copy per-run host scripts.
 
-## Application suites and persistence
+## Application suite result and persistence details
 
 `evaluateSuite(suite, options)` runs a public MirrorECMA `SuiteDefinition` through
 the same retained owner and requires a suite-capable MirrorECMA installation.

@@ -33,6 +33,11 @@ cgroup quotas remain future work.
 - `sdk/node/`: trusted evaluator transport and public-port proxy.
   `integrations/mirrorecma/` contains the optional evaluator bridge; read its
   [integration guide](integrations/mirrorecma/README.md) before changing it.
+  For new Node application integration, also read
+  [the adapter/profile contract](docs/application-integration-runtime.md) and
+  [suite workflow](integrations/mirrorecma/WORKFLOW.md). `evaluateSuite` is the
+  default application entry; `evaluateImplementation` is the lower-level
+  composition seam and `/legacy` preserves the former sandbox facade.
 - `tests/` and `conformance/`: supervisor/isolation tests, Node SDK tests, and
   shared cross-language vectors and lifecycle cases. Rust tests also live in
   `runtimes/rust/tests/`.
