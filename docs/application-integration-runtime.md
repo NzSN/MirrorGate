@@ -10,7 +10,7 @@ models, traces, expected states, or evaluator modules.
 `mirrorgate/adapter-kit` exports `generateAdapterKit(manifest, {directory,
 behavior?})` and `checkAdapterKit(manifest, {directory})`. Only a strictly
 validated `mirrorgate.port/v1` manifest is accepted. Generation owns `port.json`,
-`adapter.d.ts`, `check-adapter.mjs`, and `adapter-kit.json`. Existing unowned or
+`adapter.d.ts`, `adapter-codec.mjs`, `check-adapter.mjs`, and `adapter-kit.json`. Existing unowned or
 modified owned files cause failure before any write. `adapter.mjs` and
 `PUBLIC-CONTRACT.md` are seeded only when absent, and never become owned files.
 The kit identity binds its generator version, native representation version,

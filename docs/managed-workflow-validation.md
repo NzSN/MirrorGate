@@ -136,7 +136,9 @@ The run exposed additional application glue around build-mount discovery,
 native collection types, immutable repairs, post-disconnect cleanup evidence,
 receipt persistence, and offline setup. The proposed work and acceptance
 boundaries are recorded in [restricted workflow follow-ups](sandbox/restricted-workflow-followups.md);
-none of G1-G7 is claimed implemented by this validation.
+this September 10 run did not establish implementation of G1–G7. Subsequent
+application-integration acceptance completed G1, G2, G5 and G7 on September
+16–17; the linked ledger distinguishes that delivery from G3, G4 and G6.
 
 ## Filtered source-view acceptance
 

@@ -4,7 +4,7 @@ Application integrations can call `evaluateSuite(suite, {environment, submission
 mirror, timeouts, receipt})` using the compiler's generated suite model and an
 ordinary MirrorECMA suite. This preserves acceptance requirements, joins physical
 cleanup and optionally persists owner-only trusted evidence. See the
-[suite and receipt contract](WORKFLOW.md#application-suites-and-persistence).
+[suite and receipt contract](WORKFLOW.md#application-suite-result-and-persistence-details).
 
 `MIRRORECMA_ROOT=/absolute/MirrorECMA MIRRORS_ROOT=/absolute/Mirrors npm run
 test:suite` prepares one installed application, moves it, then executes twice
@@ -54,9 +54,11 @@ joins physical cleanup, and preserves coverage failure separately from model
 mismatch. Managed authoring adds an approved agent request; an already hosted
 handoff passes its original in-process owner rather than reconnecting.
 
-The [installed Counter consumer](examples/counter/README.md) and `npm run
-test:suite` exercise this default through packed packages and relocated/offline
-execution. Preparation performs compilation and kit generation; evaluation does
+The [installed suite harness](scripts/installed-suite.mjs), run with `npm run
+test:suite`, exercises this default through packed packages and relocated/offline
+execution. Its [consumer driver](test/installed-suite-driver.mjs) calls
+`evaluateSuite`. The separate [installed Counter consumer](examples/counter/README.md)
+retains the lower-level `evaluateImplementation` workflow. Preparation performs compilation and kit generation; evaluation does
 not rebuild or repack framework repositories.
 
 ## Lower-level composition workflow
@@ -257,4 +259,5 @@ Focused extraction evidence is recorded in [VALIDATION.md](VALIDATION.md).
 
 Dated workflow friction and proposed changes are tracked in the
 [restricted workflow follow-ups](../../docs/sandbox/restricted-workflow-followups.md).
-Those items remain unimplemented until their owning code and gates land.
+Application integration completed G1, G2, G5 and G7 on 2026-09-16–17. G3, G4
+and G6 remain separate follow-ups; the linked ledger owns their current status.

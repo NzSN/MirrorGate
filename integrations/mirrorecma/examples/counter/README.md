@@ -1,8 +1,13 @@
 # Installed Counter consumer
 
 This application supplies the Counter model/binding, approved public task and
-reusable suite. `evaluateCounter()` calls Gate's supported local workflow;
+reusable callback suite. `evaluateCounter()` calls the lower-level
+`evaluateImplementation` workflow;
 there are no caller-written host, credential, broker or cleanup scripts.
+For new applications, use the generated `SuiteDefinition` / `evaluateSuite`
+path in the [integration guide](../../README.md#application-suite-workflow).
+Its relocated/offline acceptance harness is `npm run test:suite` from the
+integration root; `installed-workflow.mjs` below tests this older Counter app.
 
 Install compatible private/local package archives for `mirrorecma`, `mirrorgate`
 and `mirrorgate-mirrorecma`, then install the application development tools and

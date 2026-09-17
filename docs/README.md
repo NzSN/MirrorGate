@@ -13,6 +13,14 @@ passed; the [validation report](managed-workflow-validation.md) records exact
 evidence. Both the actual-implementer MCP protocol harness and real outside-Codex
 framework registration/dispatch passed. No release or hosted-CI claim is implied.
 
+Application-integration acceptance completed on 2026-09-16–17, including
+relocated offline consumers, the three application matrices, actual restricted
+authors and an automated fresh-evaluator onboarding study. The
+[execution record](https://github.com/NzSN/Mirrors/blob/main/Docs/application-integration-progress.md)
+distinguishes those results from earlier workflow gates, lists skipped tiers,
+and records retained evidence and temporary-log availability. Publication and
+human usability remain separate claims.
+
 ## Implementation and acceptance status
 
 | Layer | Status / authoritative reference |
