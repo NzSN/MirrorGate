@@ -1,5 +1,8 @@
 # MirrorGate
 
+For the framework map, start with the [application integration guide](../Mirrors/Docs/application-integration-guide.md).
+To use a separate model server, read [restricted evaluation with remote Mirrors](docs/remote-mirrors.md).
+
 Isolated execution through a shared interface.
 
 MirrorGate is the shared worker infrastructure for the Mirrors ecosystem. It

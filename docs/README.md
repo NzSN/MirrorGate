@@ -1,5 +1,7 @@
 # MirrorGate design index
 
+Remote model-server placement and trusted evaluator credentials: [remote Mirrors integration](remote-mirrors.md).
+
 Recorded on 2026-09-06 from the architecture discussion establishing MirrorGate.
 These documents describe the reference architecture and initial implementation.
 The Linux/Bubblewrap supervisor, Node/Rust workers, protocol, conformance suite,

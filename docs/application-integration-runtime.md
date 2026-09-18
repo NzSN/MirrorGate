@@ -1,5 +1,7 @@
 # Public Node application integration
 
+For deployment across machines, see the [remote model-server integration](remote-mirrors.md).
+
 Gate owns the Node adapter kit, `node-esm/v1` preparation, and the public
 environment descriptor. The evaluator owns separately approved behavior prose
 and selects trusted policy IDs. These APIs do not receive private descriptors,

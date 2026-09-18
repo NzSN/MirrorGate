@@ -1,5 +1,7 @@
 # Trusted MirrorECMA evaluator integration
 
+For model-server placement, mTLS and remote corpus preparation, see [remote Mirrors integration](../../docs/remote-mirrors.md).
+
 Application integrations can call `evaluateSuite(suite, {environment, submission,
 mirror, timeouts, receipt})` using the compiler's generated suite model and an
 ordinary MirrorECMA suite. This preserves acceptance requirements, joins physical

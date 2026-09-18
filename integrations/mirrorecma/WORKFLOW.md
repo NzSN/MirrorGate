@@ -1,5 +1,7 @@
 # Gate evaluation workflow contract
 
+For a model server on another machine, see [remote Mirrors integration](../../docs/remote-mirrors.md).
+
 AH8.6/AH8.7 API contract, 2026-09-09. This document fixes the optional integration's
 local composition seam. Gate's existing supervisor and public SDK remain the only
 owners of authoritative hosting, submission, preparation and worker transitions.

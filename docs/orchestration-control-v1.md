@@ -10,7 +10,7 @@ acceptance. The external-integration migration and managed hosting now also
 pass [destination validation](managed-workflow-validation.md).
 Design baseline: MirrorGate `a377341`, MirrorECMA `89fbd14`, and Mirrors `acc3d9d`.
 This design implements the shared-process obligations in
-[client guide §13](https://github.com/NzSN/Mirrors/blob/main/Docs/client-implementation-guide.md#13-shared-sandbox-orchestration-experimental-profile).
+[client guide §13](https://github.com/NzSN/Mirrors/blob/main/Docs/client-implementation-guide.md#13-shared-sandbox-orchestration-profile).
 The companion
 [MirrorECMA landing design](https://github.com/NzSN/MirrorECMA/blob/main/docs/shared-orchestration-design.md)
 defines the first native facade. Types and judgments follow the
