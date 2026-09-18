@@ -1,7 +1,7 @@
 # Using orchestration control v1
 
 The experimental local controller owns preparation, authorization, worker
-reservation, and cleanup. Node and C++ clients speak the same
+reservation, and cleanup. Node, C++ and Rust clients speak the same
 [control contract](https://github.com/NzSN/MirrorGate/blob/main/protocol/control-v1/README.md).
 The worker stream retains the existing
 [worker v1 contract](https://github.com/NzSN/MirrorGate/blob/main/docs/protocol-v1.md).
@@ -110,12 +110,14 @@ frozen lease. The submitted adapter lives in the artifact tree.
    deadlines and process signals. Pending or cancelled calls use termination;
    a cancellation acknowledgement does not establish quiescence.
 
-Use the public Node `mirrorgate/control` and `mirrorgate/worker` subpaths or the
-native C++ SDK under `sdk/cpp/`. The
+Use the public Node `mirrorgate/control` and `mirrorgate/worker` subpaths, the
+native C++ SDK under `sdk/cpp/`, or the control-v1 Rust crate under `sdk/rust/`. The
 [Node guide](https://github.com/NzSN/MirrorGate/blob/main/sdk/node/README.md) and
-[C++ guide](https://github.com/NzSN/MirrorGate/blob/main/sdk/cpp/README.md) describe native
-transport and value conversion. Both interpret operation results and events;
-the session transition function remains in Gate.
+[C++ guide](https://github.com/NzSN/MirrorGate/blob/main/sdk/cpp/README.md) and
+[Rust guide](https://github.com/NzSN/MirrorGate/blob/main/sdk/rust/README.md)
+describe native transport and value conversion. Rust supports control-v1 only;
+Node and C++ separately implement control-v2 hosting. All three interpret
+operation results and events; the session transition function remains in Gate.
 
 An accepted operation has one terminal result. Late waiters can query
 `operation.status`; they must not retry an uncertain mutation. Control damage
@@ -141,13 +143,14 @@ The full required-backend gate is:
 
 ```bash
 cargo fetch --manifest-path runtimes/rust/Cargo.toml --locked
+cargo fetch --manifest-path sdk/rust/Cargo.toml --locked
 npm ci --ignore-scripts
 bash scripts/test.sh
 ```
 
 This includes public CLI acceptance, shared malformed-frame vectors, native
-Node/C++ clients, package/declaration consumption, and the existing worker and
-isolation suites. The C++ gate requires CMake, a C++17 compiler, and
+Node/C++ clients, the control-v1 Rust SDK, package/declaration consumption, and
+the existing worker and isolation suites. The C++ gate requires CMake, a C++17 compiler, and
 `nlohmann_json` exactly `3.11.3`; it performs no dependency download. When that
 dependency is supplied as headers, set `MIRRORGATE_NLOHMANN_JSON_INCLUDE_DIR`
 to its directory containing `nlohmann/json.hpp`.

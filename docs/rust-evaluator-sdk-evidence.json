@@ -1,0 +1,850 @@
+{
+  "schema": "mirrorgate.rust-evaluator-implementation-evidence/v1",
+  "recordedAt": "2026-09-18T10:41:15.532428+00:00",
+  "status": "accepted-local",
+  "scope": {
+    "gateControlVersions": [
+      1
+    ],
+    "workerVersions": [
+      1
+    ],
+    "platform": "linux",
+    "backend": "linux-bubblewrap-v1",
+    "controllerModes": [
+      "owned-stdio",
+      "attached-filesystem-unix"
+    ],
+    "workerRuntimes": [
+      "node-v1",
+      "rust-v1"
+    ],
+    "modelFacadeTransport": "spawned local Mirrors stdio",
+    "rustBindingProfile": "mirrorrust-counter-fixture-v1",
+    "generalRustEmitter": false,
+    "productionPublication": false,
+    "hostedCiRun": false
+  },
+  "sources": {
+    "MirrorGate": {
+      "baseCommit": "b9a83c7c2ff03bbbe30b7e7ca18d96da5b6bacf6",
+      "changedImplementationAndTestHashes": {
+        ".github/workflows/ci.yml": "a76b903637017923ea0f9c90bf1cc08ec0b483696a696e1ed776a52b8c7b6b6c",
+        "conformance/control-v1/canary-counter.mjs": "b5404dc4c7b8f5b22abd8f29b927885c2b1e385702d97bd79d5b9ce2b480a411",
+        "conformance/control-v1/run": "ae4aa1b4ea4827aa7a575572e028208732085ef3bdf91cd6c9d9e45a63fd7dd9",
+        "conformance/control-v1/run-rust": "c49cd6e46fcba9d6cf804b75813286fb23db1a03280cddd0078b4a5a41254364",
+        "integrations/mirrorrust/Cargo.lock": "56d8ff748022256d6bd0d905b3ca33a7a07cf29ead3ce2225d5a5b7e6b916e06",
+        "integrations/mirrorrust/Cargo.toml": "d5813926299c4eef6836cb4e1442f616b004b62b59104b45d60eb89db58ed17b",
+        "integrations/mirrorrust/src/lib.rs": "79720ca4ec60a3cbc5d615d894be4a2227c406de458633728215988bc4002f0e",
+        "integrations/mirrorrust/src/main.rs": "71e9dd79aade627f8435b801615a14cd22b37ad6d93d9a742319a61a09142282",
+        "scripts/build.sh": "0b43041a10639035da5f2f5aa2f9034b9e0c2fa6d14ea209e8bef7fb6add084b",
+        "scripts/test-control-rust.sh": "4fbf4166cf77feeeeb33606738d4f575262a9c3ebeeaee40a01154807bada2cb",
+        "scripts/test-rust-package-consumer.sh": "d37ebd7ad5f173faa25220213153d5df13d8f5667ffe2815e061b3b798403d12",
+        "scripts/test.sh": "0e0d726da899f77a4e92ef1c25fa68f280602d0dcfd3fc95be362da3743547e0",
+        "sdk/compatibility.json": "d06e0e464eb4cc2825bef264d7fa6a05c4e15a2ef3846c2088c524b96afd0b08",
+        "sdk/rust/Cargo.lock": "25924e2dce512fa9c3aa529d40835bb05ec2434ccf2785632f95ee7e9792a971",
+        "sdk/rust/Cargo.toml": "2fcbe8549840414528a2b43a2df09df8d581f338bdf3451aadfdd0b49fcbe189",
+        "sdk/rust/src/control.rs": "94c91304c43ad0eb8ae95e8b12faaee45c6f5d157a46886630d7e72c9c7b11c6",
+        "sdk/rust/src/error.rs": "99f8d2139efe2ed7f57ef4be1c840ca1344466da12f2bc5607877e7ca5dfdbc7",
+        "sdk/rust/src/lib.rs": "05b6931b89fc26038d54079bef48247d67f2f500a7aa82d2ee27a4b63f45dcde",
+        "sdk/rust/src/manifest.rs": "fe75ce66a7dd5bce9a27c890a250a02c27557dcd29a9498ed830e7986bc68b7e",
+        "sdk/rust/src/protocol.rs": "8e939a86e6673fce0b4bbce4c46a167df703a38976418d53f34908e963ae9edd",
+        "sdk/rust/src/strict.rs": "a646573bfad954126e4e4d7b006ab63dd80aa60235f480b9f2925c75e3ef8a73",
+        "sdk/rust/src/transport.rs": "68ceed42b695d375ad51bb7fa62ca22c5e7fba10362d63c33fe27b1576a5a8a0",
+        "sdk/rust/src/value.rs": "9b3fadad87eb6525534977615b7ec0a426084ef15d943f5f549d6f866903c84e",
+        "sdk/rust/src/worker.rs": "495df7a2546af0f5c27663c1ec54eb0c133ccfd2bc13027a05a5b2e820de310b",
+        "sdk/rust/tests/control_failures.rs": "f9f9e43a136743f035ffc4fb4f9d319657a3caf2199a845b1fea100506449ec3",
+        "sdk/rust/tests/managed_worker_failures.rs": "4b7d4801ebfe652b839a6009b8b815a666b5e601dba4c06afc7a5a19279b9184"
+      }
+    },
+    "MirrorRust": {
+      "baseCommit": "68e36e4f33e5c4c3b6a44e43f1420d5c219691d4",
+      "changedImplementationAndTestHashes": {
+        "Cargo.toml": "dc7529ce6edbdc1096ff935b90be2ce4ff667dd5aac4edd90f3db3a82d25a01a",
+        "src/client.rs": "cba4291fd40d9d884f53df895a4a5d51b29f77504acbef1dc4d22dbb5647a2e0",
+        "src/json.rs": "ef20283713e020529d022fc67f8b92eef8027912f58fa78e04a897c16d739c19",
+        "src/lib.rs": "06194e48838f270a31d538d37a9f599b4c4f5e74a382e02275e9bb9354e8cced",
+        "src/model_interface.rs": "28623ef8b35d8cef8fa4ec5cae3e1285e6b18b02926fb2332425aad8f107d40c",
+        "src/protocol.rs": "ed59ec6bc4949d4864db2a434fd4f218e4e1c1511cb38dc6cb3286c15b8226ca",
+        "tests/model_interface.rs": "0cf737861c40bfef7f828f2f8cb7616423b62901b164b2183cfedca1989c62ae",
+        "tests/protocol.rs": "9d416a5d19b1fccb1e535e6f27a87e8f1b37318c9799a46b27aa39b112107437"
+      }
+    },
+    "Mirrors": {
+      "baseCommit": "ae2bea9315bb711693a5477ad45a7026f06d417c",
+      "changedImplementationAndTestHashes": {}
+    }
+  },
+  "validation": {
+    "rustSdk": {
+      "defaultTestsPassed": 32,
+      "allFeaturesTestsPassed": 32,
+      "controlVectors": 72,
+      "workerVectors": 107,
+      "fmt": "passed",
+      "defaultClippy": "passed",
+      "allFeaturesClippy": "passed"
+    },
+    "mirrorRust": {
+      "fullSuitePassed": 65,
+      "latestMiSuitePassed": 12,
+      "protocolSuitePassed": 32,
+      "distinctTestsCovered": 66,
+      "note": "Full65 suite including live TCP/mTLS passed; one later test-only unauthorized-negative addition was covered by focused MI12 and final matrix preflight.",
+      "fmt": "passed",
+      "clippy": "passed"
+    },
+    "rustIntegration": {
+      "unitTestsPassed": 2,
+      "matrixRowsPassed": 20,
+      "nodeSentinel": "passed",
+      "privateCanaryProbe": "passed",
+      "cargoPathProvenance": "passed",
+      "fmt": "passed",
+      "clippy": "passed"
+    },
+    "existingGateRegression": {
+      "pythonPassed": 252,
+      "nodePassed": 226,
+      "nodeIntegrationPassed": 4,
+      "cpp": "native SDK and real control cases passed",
+      "rustWorkerPassed": 15,
+      "isolation": "Node/Rust real Bubblewrap conformance and lifecycles passed",
+      "note": "Monolithic root run preceded only final narrow Rust SDK validators; current SDK independently passed32/32 each feature mode, final package consumer and final live matrix. Unchanged controller/other-language checks were not needlessly repeated."
+    },
+    "referenceMatrix": {
+      "rowsPassed": 42,
+      "cppRows": 20,
+      "typescriptRows": 22,
+      "normalizedParityCases": 20,
+      "normalization": "TypeScript wrong-digest resultStatus=failed is normalized to negotiation-rejected only with zero authorization/acquisition/connection counts; its legacy-matrix-driver.ts additionally asserts modelNegotiation/interface_digest_mismatch.",
+      "postludeNote": "All42 reference rows passed; the original manifest postlude timed out probing lake env lean --version. QA completed the reproducibility manifest separately and retained the row evidence. This is not a claim that the initial shell invocation exited zero."
+    },
+    "sdkPackageConsumer": {
+      "status": "passed",
+      "packageSha256": "6253393e15d2a3ecd6017cab6c240169e5f53d0bcc3039fb34ca6a7ecbfd3086",
+      "relocatedConsumer": "built and executed against extracted crate"
+    }
+  },
+  "rustMatrixRows": [
+    {
+      "adapterDispatches": 3,
+      "backend": "linux-bubblewrap-v1",
+      "bindingFactoryCalls": 1,
+      "cleanup": "succeeded",
+      "controlMode": "owned",
+      "controlProcessState": "exited",
+      "controlShutdown": "confirmed",
+      "controlVersion": 1,
+      "evaluatorLanguage": "rust",
+      "facade": "mirrorrust",
+      "mirrorEcmaDependency": false,
+      "nodeEvaluator": false,
+      "replay": "traces",
+      "resultStatus": "passed",
+      "schema": "mirrors.shared-orchestration-evidence/v1",
+      "sut": "correct",
+      "workerAcquisitions": 1,
+      "workerRuntime": "node-v1",
+      "workerStartedEvents": 1,
+      "workerVersion": 1
+    },
+    {
+      "adapterDispatches": 2,
+      "backend": "linux-bubblewrap-v1",
+      "bindingFactoryCalls": 1,
+      "cleanup": "succeeded",
+      "controlMode": "owned",
+      "controlProcessState": "exited",
+      "controlShutdown": "confirmed",
+      "controlVersion": 1,
+      "evaluatorLanguage": "rust",
+      "facade": "mirrorrust",
+      "mirrorEcmaDependency": false,
+      "nodeEvaluator": false,
+      "replay": "traces",
+      "resultStatus": "mismatch",
+      "schema": "mirrors.shared-orchestration-evidence/v1",
+      "sut": "faulty",
+      "workerAcquisitions": 1,
+      "workerRuntime": "node-v1",
+      "workerStartedEvents": 1,
+      "workerVersion": 1
+    },
+    {
+      "adapterDispatches": 0,
+      "backend": "linux-bubblewrap-v1",
+      "bindingFactoryCalls": 0,
+      "cleanup": "succeeded",
+      "controlMode": "owned",
+      "controlProcessState": "exited",
+      "controlShutdown": "confirmed",
+      "controlVersion": 1,
+      "evaluatorLanguage": "rust",
+      "facade": "mirrorrust",
+      "mirrorEcmaDependency": false,
+      "nodeEvaluator": false,
+      "replay": "traces",
+      "resultStatus": "negotiation-rejected",
+      "schema": "mirrors.shared-orchestration-evidence/v1",
+      "sut": "wrong-digest",
+      "workerAcquisitions": 0,
+      "workerRuntime": "node-v1",
+      "workerStartedEvents": 0,
+      "workerVersion": 1
+    },
+    {
+      "adapterDispatches": 10,
+      "backend": "linux-bubblewrap-v1",
+      "bindingFactoryCalls": 1,
+      "cleanup": "succeeded",
+      "controlMode": "owned",
+      "controlProcessState": "exited",
+      "controlShutdown": "confirmed",
+      "controlVersion": 1,
+      "evaluatorLanguage": "rust",
+      "facade": "mirrorrust",
+      "mirrorEcmaDependency": false,
+      "nodeEvaluator": false,
+      "replay": "generate",
+      "resultStatus": "passed",
+      "schema": "mirrors.shared-orchestration-evidence/v1",
+      "sut": "generate-correct",
+      "workerAcquisitions": 1,
+      "workerRuntime": "node-v1",
+      "workerStartedEvents": 1,
+      "workerVersion": 1
+    },
+    {
+      "adapterDispatches": 2,
+      "backend": "linux-bubblewrap-v1",
+      "bindingFactoryCalls": 1,
+      "cleanup": "succeeded",
+      "controlMode": "owned",
+      "controlProcessState": "exited",
+      "controlShutdown": "confirmed",
+      "controlVersion": 1,
+      "evaluatorLanguage": "rust",
+      "facade": "mirrorrust",
+      "mirrorEcmaDependency": false,
+      "nodeEvaluator": false,
+      "replay": "generate",
+      "resultStatus": "mismatch",
+      "schema": "mirrors.shared-orchestration-evidence/v1",
+      "sut": "generate-faulty",
+      "workerAcquisitions": 1,
+      "workerRuntime": "node-v1",
+      "workerStartedEvents": 1,
+      "workerVersion": 1
+    },
+    {
+      "adapterDispatches": 3,
+      "backend": "linux-bubblewrap-v1",
+      "bindingFactoryCalls": 1,
+      "cleanup": "succeeded",
+      "controlMode": "owned",
+      "controlProcessState": "exited",
+      "controlShutdown": "confirmed",
+      "controlVersion": 1,
+      "evaluatorLanguage": "rust",
+      "facade": "mirrorrust",
+      "mirrorEcmaDependency": false,
+      "nodeEvaluator": false,
+      "replay": "traces",
+      "resultStatus": "passed",
+      "schema": "mirrors.shared-orchestration-evidence/v1",
+      "sut": "correct",
+      "workerAcquisitions": 1,
+      "workerRuntime": "rust-v1",
+      "workerStartedEvents": 1,
+      "workerVersion": 1
+    },
+    {
+      "adapterDispatches": 2,
+      "backend": "linux-bubblewrap-v1",
+      "bindingFactoryCalls": 1,
+      "cleanup": "succeeded",
+      "controlMode": "owned",
+      "controlProcessState": "exited",
+      "controlShutdown": "confirmed",
+      "controlVersion": 1,
+      "evaluatorLanguage": "rust",
+      "facade": "mirrorrust",
+      "mirrorEcmaDependency": false,
+      "nodeEvaluator": false,
+      "replay": "traces",
+      "resultStatus": "mismatch",
+      "schema": "mirrors.shared-orchestration-evidence/v1",
+      "sut": "faulty",
+      "workerAcquisitions": 1,
+      "workerRuntime": "rust-v1",
+      "workerStartedEvents": 1,
+      "workerVersion": 1
+    },
+    {
+      "adapterDispatches": 0,
+      "backend": "linux-bubblewrap-v1",
+      "bindingFactoryCalls": 0,
+      "cleanup": "succeeded",
+      "controlMode": "owned",
+      "controlProcessState": "exited",
+      "controlShutdown": "confirmed",
+      "controlVersion": 1,
+      "evaluatorLanguage": "rust",
+      "facade": "mirrorrust",
+      "mirrorEcmaDependency": false,
+      "nodeEvaluator": false,
+      "replay": "traces",
+      "resultStatus": "negotiation-rejected",
+      "schema": "mirrors.shared-orchestration-evidence/v1",
+      "sut": "wrong-digest",
+      "workerAcquisitions": 0,
+      "workerRuntime": "rust-v1",
+      "workerStartedEvents": 0,
+      "workerVersion": 1
+    },
+    {
+      "adapterDispatches": 10,
+      "backend": "linux-bubblewrap-v1",
+      "bindingFactoryCalls": 1,
+      "cleanup": "succeeded",
+      "controlMode": "owned",
+      "controlProcessState": "exited",
+      "controlShutdown": "confirmed",
+      "controlVersion": 1,
+      "evaluatorLanguage": "rust",
+      "facade": "mirrorrust",
+      "mirrorEcmaDependency": false,
+      "nodeEvaluator": false,
+      "replay": "generate",
+      "resultStatus": "passed",
+      "schema": "mirrors.shared-orchestration-evidence/v1",
+      "sut": "generate-correct",
+      "workerAcquisitions": 1,
+      "workerRuntime": "rust-v1",
+      "workerStartedEvents": 1,
+      "workerVersion": 1
+    },
+    {
+      "adapterDispatches": 2,
+      "backend": "linux-bubblewrap-v1",
+      "bindingFactoryCalls": 1,
+      "cleanup": "succeeded",
+      "controlMode": "owned",
+      "controlProcessState": "exited",
+      "controlShutdown": "confirmed",
+      "controlVersion": 1,
+      "evaluatorLanguage": "rust",
+      "facade": "mirrorrust",
+      "mirrorEcmaDependency": false,
+      "nodeEvaluator": false,
+      "replay": "generate",
+      "resultStatus": "mismatch",
+      "schema": "mirrors.shared-orchestration-evidence/v1",
+      "sut": "generate-faulty",
+      "workerAcquisitions": 1,
+      "workerRuntime": "rust-v1",
+      "workerStartedEvents": 1,
+      "workerVersion": 1
+    },
+    {
+      "adapterDispatches": 3,
+      "backend": "linux-bubblewrap-v1",
+      "bindingFactoryCalls": 1,
+      "cleanup": "succeeded",
+      "controlMode": "attached",
+      "controlProcessState": "not-owned",
+      "controlShutdown": "confirmed",
+      "controlVersion": 1,
+      "evaluatorLanguage": "rust",
+      "facade": "mirrorrust",
+      "mirrorEcmaDependency": false,
+      "nodeEvaluator": false,
+      "replay": "traces",
+      "resultStatus": "passed",
+      "schema": "mirrors.shared-orchestration-evidence/v1",
+      "sut": "correct",
+      "workerAcquisitions": 1,
+      "workerRuntime": "node-v1",
+      "workerStartedEvents": 1,
+      "workerVersion": 1
+    },
+    {
+      "adapterDispatches": 2,
+      "backend": "linux-bubblewrap-v1",
+      "bindingFactoryCalls": 1,
+      "cleanup": "succeeded",
+      "controlMode": "attached",
+      "controlProcessState": "not-owned",
+      "controlShutdown": "confirmed",
+      "controlVersion": 1,
+      "evaluatorLanguage": "rust",
+      "facade": "mirrorrust",
+      "mirrorEcmaDependency": false,
+      "nodeEvaluator": false,
+      "replay": "traces",
+      "resultStatus": "mismatch",
+      "schema": "mirrors.shared-orchestration-evidence/v1",
+      "sut": "faulty",
+      "workerAcquisitions": 1,
+      "workerRuntime": "node-v1",
+      "workerStartedEvents": 1,
+      "workerVersion": 1
+    },
+    {
+      "adapterDispatches": 0,
+      "backend": "linux-bubblewrap-v1",
+      "bindingFactoryCalls": 0,
+      "cleanup": "succeeded",
+      "controlMode": "attached",
+      "controlProcessState": "not-owned",
+      "controlShutdown": "confirmed",
+      "controlVersion": 1,
+      "evaluatorLanguage": "rust",
+      "facade": "mirrorrust",
+      "mirrorEcmaDependency": false,
+      "nodeEvaluator": false,
+      "replay": "traces",
+      "resultStatus": "negotiation-rejected",
+      "schema": "mirrors.shared-orchestration-evidence/v1",
+      "sut": "wrong-digest",
+      "workerAcquisitions": 0,
+      "workerRuntime": "node-v1",
+      "workerStartedEvents": 0,
+      "workerVersion": 1
+    },
+    {
+      "adapterDispatches": 10,
+      "backend": "linux-bubblewrap-v1",
+      "bindingFactoryCalls": 1,
+      "cleanup": "succeeded",
+      "controlMode": "attached",
+      "controlProcessState": "not-owned",
+      "controlShutdown": "confirmed",
+      "controlVersion": 1,
+      "evaluatorLanguage": "rust",
+      "facade": "mirrorrust",
+      "mirrorEcmaDependency": false,
+      "nodeEvaluator": false,
+      "replay": "generate",
+      "resultStatus": "passed",
+      "schema": "mirrors.shared-orchestration-evidence/v1",
+      "sut": "generate-correct",
+      "workerAcquisitions": 1,
+      "workerRuntime": "node-v1",
+      "workerStartedEvents": 1,
+      "workerVersion": 1
+    },
+    {
+      "adapterDispatches": 2,
+      "backend": "linux-bubblewrap-v1",
+      "bindingFactoryCalls": 1,
+      "cleanup": "succeeded",
+      "controlMode": "attached",
+      "controlProcessState": "not-owned",
+      "controlShutdown": "confirmed",
+      "controlVersion": 1,
+      "evaluatorLanguage": "rust",
+      "facade": "mirrorrust",
+      "mirrorEcmaDependency": false,
+      "nodeEvaluator": false,
+      "replay": "generate",
+      "resultStatus": "mismatch",
+      "schema": "mirrors.shared-orchestration-evidence/v1",
+      "sut": "generate-faulty",
+      "workerAcquisitions": 1,
+      "workerRuntime": "node-v1",
+      "workerStartedEvents": 1,
+      "workerVersion": 1
+    },
+    {
+      "adapterDispatches": 3,
+      "backend": "linux-bubblewrap-v1",
+      "bindingFactoryCalls": 1,
+      "cleanup": "succeeded",
+      "controlMode": "attached",
+      "controlProcessState": "not-owned",
+      "controlShutdown": "confirmed",
+      "controlVersion": 1,
+      "evaluatorLanguage": "rust",
+      "facade": "mirrorrust",
+      "mirrorEcmaDependency": false,
+      "nodeEvaluator": false,
+      "replay": "traces",
+      "resultStatus": "passed",
+      "schema": "mirrors.shared-orchestration-evidence/v1",
+      "sut": "correct",
+      "workerAcquisitions": 1,
+      "workerRuntime": "rust-v1",
+      "workerStartedEvents": 1,
+      "workerVersion": 1
+    },
+    {
+      "adapterDispatches": 2,
+      "backend": "linux-bubblewrap-v1",
+      "bindingFactoryCalls": 1,
+      "cleanup": "succeeded",
+      "controlMode": "attached",
+      "controlProcessState": "not-owned",
+      "controlShutdown": "confirmed",
+      "controlVersion": 1,
+      "evaluatorLanguage": "rust",
+      "facade": "mirrorrust",
+      "mirrorEcmaDependency": false,
+      "nodeEvaluator": false,
+      "replay": "traces",
+      "resultStatus": "mismatch",
+      "schema": "mirrors.shared-orchestration-evidence/v1",
+      "sut": "faulty",
+      "workerAcquisitions": 1,
+      "workerRuntime": "rust-v1",
+      "workerStartedEvents": 1,
+      "workerVersion": 1
+    },
+    {
+      "adapterDispatches": 0,
+      "backend": "linux-bubblewrap-v1",
+      "bindingFactoryCalls": 0,
+      "cleanup": "succeeded",
+      "controlMode": "attached",
+      "controlProcessState": "not-owned",
+      "controlShutdown": "confirmed",
+      "controlVersion": 1,
+      "evaluatorLanguage": "rust",
+      "facade": "mirrorrust",
+      "mirrorEcmaDependency": false,
+      "nodeEvaluator": false,
+      "replay": "traces",
+      "resultStatus": "negotiation-rejected",
+      "schema": "mirrors.shared-orchestration-evidence/v1",
+      "sut": "wrong-digest",
+      "workerAcquisitions": 0,
+      "workerRuntime": "rust-v1",
+      "workerStartedEvents": 0,
+      "workerVersion": 1
+    },
+    {
+      "adapterDispatches": 10,
+      "backend": "linux-bubblewrap-v1",
+      "bindingFactoryCalls": 1,
+      "cleanup": "succeeded",
+      "controlMode": "attached",
+      "controlProcessState": "not-owned",
+      "controlShutdown": "confirmed",
+      "controlVersion": 1,
+      "evaluatorLanguage": "rust",
+      "facade": "mirrorrust",
+      "mirrorEcmaDependency": false,
+      "nodeEvaluator": false,
+      "replay": "generate",
+      "resultStatus": "passed",
+      "schema": "mirrors.shared-orchestration-evidence/v1",
+      "sut": "generate-correct",
+      "workerAcquisitions": 1,
+      "workerRuntime": "rust-v1",
+      "workerStartedEvents": 1,
+      "workerVersion": 1
+    },
+    {
+      "adapterDispatches": 2,
+      "backend": "linux-bubblewrap-v1",
+      "bindingFactoryCalls": 1,
+      "cleanup": "succeeded",
+      "controlMode": "attached",
+      "controlProcessState": "not-owned",
+      "controlShutdown": "confirmed",
+      "controlVersion": 1,
+      "evaluatorLanguage": "rust",
+      "facade": "mirrorrust",
+      "mirrorEcmaDependency": false,
+      "nodeEvaluator": false,
+      "replay": "generate",
+      "resultStatus": "mismatch",
+      "schema": "mirrors.shared-orchestration-evidence/v1",
+      "sut": "generate-faulty",
+      "workerAcquisitions": 1,
+      "workerRuntime": "rust-v1",
+      "workerStartedEvents": 1,
+      "workerVersion": 1
+    }
+  ],
+  "crossFacadeComparisons": [
+    {
+      "controlMode": "owned",
+      "workerRuntime": "node-v1",
+      "scenario": "correct",
+      "normalizedOutcome": "passed",
+      "allThreeEquivalent": true
+    },
+    {
+      "controlMode": "owned",
+      "workerRuntime": "node-v1",
+      "scenario": "faulty",
+      "normalizedOutcome": "mismatch",
+      "allThreeEquivalent": true
+    },
+    {
+      "controlMode": "owned",
+      "workerRuntime": "node-v1",
+      "scenario": "wrong-digest",
+      "normalizedOutcome": "negotiation-rejected",
+      "allThreeEquivalent": true
+    },
+    {
+      "controlMode": "owned",
+      "workerRuntime": "node-v1",
+      "scenario": "generate-correct",
+      "normalizedOutcome": "passed",
+      "allThreeEquivalent": true
+    },
+    {
+      "controlMode": "owned",
+      "workerRuntime": "node-v1",
+      "scenario": "generate-faulty",
+      "normalizedOutcome": "mismatch",
+      "allThreeEquivalent": true
+    },
+    {
+      "controlMode": "owned",
+      "workerRuntime": "rust-v1",
+      "scenario": "correct",
+      "normalizedOutcome": "passed",
+      "allThreeEquivalent": true
+    },
+    {
+      "controlMode": "owned",
+      "workerRuntime": "rust-v1",
+      "scenario": "faulty",
+      "normalizedOutcome": "mismatch",
+      "allThreeEquivalent": true
+    },
+    {
+      "controlMode": "owned",
+      "workerRuntime": "rust-v1",
+      "scenario": "wrong-digest",
+      "normalizedOutcome": "negotiation-rejected",
+      "allThreeEquivalent": true
+    },
+    {
+      "controlMode": "owned",
+      "workerRuntime": "rust-v1",
+      "scenario": "generate-correct",
+      "normalizedOutcome": "passed",
+      "allThreeEquivalent": true
+    },
+    {
+      "controlMode": "owned",
+      "workerRuntime": "rust-v1",
+      "scenario": "generate-faulty",
+      "normalizedOutcome": "mismatch",
+      "allThreeEquivalent": true
+    },
+    {
+      "controlMode": "attached",
+      "workerRuntime": "node-v1",
+      "scenario": "correct",
+      "normalizedOutcome": "passed",
+      "allThreeEquivalent": true
+    },
+    {
+      "controlMode": "attached",
+      "workerRuntime": "node-v1",
+      "scenario": "faulty",
+      "normalizedOutcome": "mismatch",
+      "allThreeEquivalent": true
+    },
+    {
+      "controlMode": "attached",
+      "workerRuntime": "node-v1",
+      "scenario": "wrong-digest",
+      "normalizedOutcome": "negotiation-rejected",
+      "allThreeEquivalent": true
+    },
+    {
+      "controlMode": "attached",
+      "workerRuntime": "node-v1",
+      "scenario": "generate-correct",
+      "normalizedOutcome": "passed",
+      "allThreeEquivalent": true
+    },
+    {
+      "controlMode": "attached",
+      "workerRuntime": "node-v1",
+      "scenario": "generate-faulty",
+      "normalizedOutcome": "mismatch",
+      "allThreeEquivalent": true
+    },
+    {
+      "controlMode": "attached",
+      "workerRuntime": "rust-v1",
+      "scenario": "correct",
+      "normalizedOutcome": "passed",
+      "allThreeEquivalent": true
+    },
+    {
+      "controlMode": "attached",
+      "workerRuntime": "rust-v1",
+      "scenario": "faulty",
+      "normalizedOutcome": "mismatch",
+      "allThreeEquivalent": true
+    },
+    {
+      "controlMode": "attached",
+      "workerRuntime": "rust-v1",
+      "scenario": "wrong-digest",
+      "normalizedOutcome": "negotiation-rejected",
+      "allThreeEquivalent": true
+    },
+    {
+      "controlMode": "attached",
+      "workerRuntime": "rust-v1",
+      "scenario": "generate-correct",
+      "normalizedOutcome": "passed",
+      "allThreeEquivalent": true
+    },
+    {
+      "controlMode": "attached",
+      "workerRuntime": "rust-v1",
+      "scenario": "generate-faulty",
+      "normalizedOutcome": "mismatch",
+      "allThreeEquivalent": true
+    }
+  ],
+  "rustRunManifest": {
+    "schema": "mirrors.shared-orchestration-reproducibility/v1",
+    "summary": {
+      "schema": "mirrorgate.rust-control-acceptance-summary/v1",
+      "status": "green",
+      "rows": 20,
+      "backend": "linux-bubblewrap-v1"
+    },
+    "repositories": {
+      "MirrorGate": {
+        "head": "b9a83c7c2ff03bbbe30b7e7ca18d96da5b6bacf6",
+        "workspaceSha256": "b708696d6b0b6b95f60413b41855b4fe0f3c2656998d26f2a70974501dcb1e50",
+        "statusPorcelainV1Z": " M .github/workflows/ci.yml\u0000 M README.md\u0000 M conformance/control-v1/run\u0000 M docs/README.md\u0000 M docs/compatibility.md\u0000 M docs/orchestration-control-usage.md\u0000 M docs/orchestration-control-v1.md\u0000 M docs/rust-evaluator-sdk-plan.md\u0000 M scripts/build.sh\u0000 M scripts/test.sh\u0000 M sdk/compatibility.json\u0000?? conformance/control-v1/canary-counter.mjs\u0000?? conformance/control-v1/run-rust\u0000?? docs/rust-evaluator-sdk-status.md\u0000?? integrations/mirrorrust/\u0000?? scripts/test-control-rust.sh\u0000?? scripts/test-rust-package-consumer.sh\u0000?? sdk/rust/\u0000"
+      },
+      "MirrorRust": {
+        "head": "68e36e4f33e5c4c3b6a44e43f1420d5c219691d4",
+        "workspaceSha256": "ca2752ac17227afb57a0392aff65caa43e78285ce690375e4ff7cd2376058467",
+        "statusPorcelainV1Z": " M Cargo.toml\u0000 M README.md\u0000 M src/client.rs\u0000 M src/lib.rs\u0000 M src/protocol.rs\u0000 M tests/protocol.rs\u0000?? src/json.rs\u0000?? src/model_interface.rs\u0000?? tests/model_interface.rs\u0000"
+      },
+      "Mirrors": {
+        "head": "ae2bea9315bb711693a5477ad45a7026f06d417c",
+        "workspaceSha256": "be0701e8738ec31d6fa6daf620424738602444390d537d8e3ecd8bb46176a4ae",
+        "statusPorcelainV1Z": " M Docs/README.md\u0000 M Docs/client-implementation-guide.md\u0000 M Docs/client-test-coverage.md\u0000"
+      }
+    },
+    "toolchain": {
+      "python": "Python 3.12.3",
+      "rust": "rustc 1.96.0 (ac68faa20 2026-05-25)",
+      "cargo": "cargo 1.96.0 (30a34c682 2026-05-25)",
+      "nodeWorkerRuntime": "v24.15.0",
+      "apalache": "0.61.0",
+      "bubblewrap": "bubblewrap 0.9.0",
+      "kernel": "Linux 6.6.87.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun  5 18:30:46 UTC 2025 x86_64 GNU/Linux"
+    },
+    "artifacts": {
+      "driverSha256": "69b6bd68b438e61d386e1ac42e82baac333e494f850832820c3878d6e0133de3",
+      "rustWorkerSha256": "0d337c59aa59fd6ba1f62f58b3298f515a74022a25845fdf96fef51a51e9f855",
+      "mirrorsBinarySha256": "ad1f0219ddc40583ac9ed0b6c6d7832bae3a0de8be850794e6fbff776fcc9714",
+      "nodeWorkerBinarySha256": "d1de76d8edf2fededf6f8b30d244e2c0529ac607923a018283b77e9c74bd932c"
+    },
+    "claims": {
+      "gatePlatform": "linux",
+      "gateBackend": "linux-bubblewrap-v1",
+      "nodeEvaluatorRequired": false,
+      "productionPublication": false,
+      "privateCanaryChecks": {
+        "workerVisibleSurfaces": [
+          "adapter-inputs",
+          "worker-environment",
+          "proc-self",
+          "frozen-artifact"
+        ],
+        "publicEvaluatorEvidence": true,
+        "rawWorkerFrameCapture": false
+      }
+    }
+  },
+  "referenceRunManifest": {
+    "schema": "mirrors.shared-orchestration-reproducibility/v1",
+    "summary": {
+      "schema": "mirrorgate.control-acceptance-summary/v1",
+      "status": "green",
+      "rows": 42,
+      "backend": "linux-bubblewrap-v1",
+      "gateRevision": "b9a83c7c2ff03bbbe30b7e7ca18d96da5b6bacf6",
+      "mirrorcppRevision": "c2549d6af3cc4a1a39a120214977bf44b0c61429",
+      "mirrorecmaRevision": "d31b1d3a59ccad379090287b818945ca253c0cea",
+      "mirrorsRevision": "ae2bea9315bb711693a5477ad45a7026f06d417c"
+    },
+    "repositories": {
+      "MirrorGate": {
+        "head": "b9a83c7c2ff03bbbe30b7e7ca18d96da5b6bacf6",
+        "workspaceSha256": "1ee9f5bd26eaf71a16863cf53209e9141cf4c549c15d08d419ee917b46249dc0",
+        "statusPorcelainV1Z": " M .github/workflows/ci.yml\u0000 M README.md\u0000 M conformance/control-v1/run\u0000 M docs/orchestration-control-usage.md\u0000 M docs/rust-evaluator-sdk-plan.md\u0000 M scripts/build.sh\u0000 M scripts/test.sh\u0000?? conformance/control-v1/canary-counter.mjs\u0000?? conformance/control-v1/run-rust\u0000?? docs/rust-evaluator-sdk-status.md\u0000?? integrations/mirrorrust/\u0000?? scripts/test-control-rust.sh\u0000?? scripts/test-rust-package-consumer.sh\u0000?? sdk/rust/\u0000"
+      },
+      "MirrorCPP": {
+        "head": "c2549d6af3cc4a1a39a120214977bf44b0c61429",
+        "workspaceSha256": "a81f85d6ba82f17cb78a10e58f8d38c4ba3b57ec2ea890d367bf0503ebddc440",
+        "statusPorcelainV1Z": ""
+      },
+      "MirrorECMA": {
+        "head": "d31b1d3a59ccad379090287b818945ca253c0cea",
+        "workspaceSha256": "8b34f2a97bf9f231e224d671e017cd07c465bc67e94e60a9e02e76b49313544f",
+        "statusPorcelainV1Z": "?? .work/\u0000"
+      },
+      "Mirrors": {
+        "head": "ae2bea9315bb711693a5477ad45a7026f06d417c",
+        "workspaceSha256": "be0701e8738ec31d6fa6daf620424738602444390d537d8e3ecd8bb46176a4ae",
+        "statusPorcelainV1Z": " M Docs/README.md\u0000 M Docs/client-implementation-guide.md\u0000 M Docs/client-test-coverage.md\u0000"
+      }
+    },
+    "gateSdk": {
+      "version": "0.1.0",
+      "archiveSha256": "ce4bbf5d63fc81c33774889b2eba8ce2c01cb7204d212d81d86bc8176258be17"
+    },
+    "toolchain": {
+      "node": "v24.19.0",
+      "python": "Python 3.12.3",
+      "rust": "rustc 1.96.0 (ac68faa20 2026-05-25)",
+      "cxx": "c++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+      "cmake": "cmake version 3.28.3",
+      "typescript": "Version 5.9.3",
+      "lean": "Lean (version 4.33.0, x86_64-unknown-linux-gnu, commit d8b18978322de05a8f3dba51ef03cf5461676c17, Release)",
+      "apalache": "0.61.0",
+      "bubblewrap": "bubblewrap 0.9.0",
+      "kernel": "Linux 6.6.87.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun  5 18:30:46 UTC 2025 x86_64 GNU/Linux"
+    },
+    "artifacts": {
+      "mirrorsBinarySha256": "ad1f0219ddc40583ac9ed0b6c6d7832bae3a0de8be850794e6fbff776fcc9714",
+      "nodeRuntimeRoot": "/home/nzsn/Repos/MirrorGate/.work/toolchains/node-v24.15.0-linux-x64",
+      "nodeRuntimeVersion": "v24.15.0",
+      "nodeRuntimeBinarySha256": "d1de76d8edf2fededf6f8b30d244e2c0529ac607923a018283b77e9c74bd932c"
+    }
+  },
+  "artifacts": {
+    "rustRowsSha256": "254336e6bc28c778c8253d47975cbce1a1bd73be766c97eb1099f86293fbbc80",
+    "rustManifestSha256": "24a2a598ef198172cc175adf35c26df6534b2f9b1bcad66cb60b59464b0da1b3",
+    "referenceRowsSha256": "3602b31f271c1e3c79b6901ce534f6ab454dd28b12724fc5cf6f76cba5e519e8",
+    "referenceManifestSha256": "de74dd8c60b1852ce0d5da6d51e873a3a676a6fd80757c349c26650962c8f59b"
+  },
+  "logs": {
+    ".work/rust-evaluator/full-test-rerun.log": "d2fc5f9b83fc90d6077b759fe0bc9ac948dff0d3306eb047442e7659f7adf009",
+    ".work/rust-evaluator/node-v2-focused.log": "30c987808a0a6ac423b5d190108872a9505fbf6ad921d15c21c8197f2c90f327",
+    ".work/rust-evaluator/reference-control-v1-rerun.log": "134ff8fa056c2f57932bae78aa598c3fb04dbc55e8952358ac6592ed3629f164",
+    ".work/rust-evaluator/rust-control-v1-final-reviewed.log": "130c6287dbfe82d9b02a1de84ad212a8b9044cc23cb464eadb09420260c20d77",
+    ".work/rust-evaluator/package-consumer-reviewed.log": "de0645da18febae7ef4e940cbda662250e32543e2ebac87b58810f5e08cd1cd7"
+  },
+  "limitations": [
+    "No general mirrorrust-v1 code generator",
+    "No Rust control-v2 managed hosting",
+    "No remote-model transport in the new evaluator facade; base MirrorRust TCP/mTLS checked separately",
+    "No Windows/macOS Gate isolation",
+    "No heap-leak theorem or unbounded privacy proof",
+    "Privacy probe inspects actual worker-visible surfaces and public evidence; raw worker-frame capture was not performed",
+    "Optional CI dispatch statically checked, not hosted-run",
+    "Nothing committed, published or deployed by this implementation task"
+  ]
+}

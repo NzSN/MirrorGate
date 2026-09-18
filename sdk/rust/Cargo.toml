@@ -1,0 +1,27 @@
+[package]
+name = "mirrorgate-sdk"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+publish = false
+description = "Native Rust control-v1 and managed worker-v1 client for MirrorGate"
+
+[lib]
+name = "mirrorgate_sdk"
+path = "src/lib.rs"
+
+[dependencies]
+base64 = "=0.22.1"
+libc = "=0.2.189"
+num-bigint = "=0.4.6"
+serde = { version = "=1.0.228", features = ["derive"] }
+serde_json = { version = "=1.0.150", features = ["unbounded_depth"] }
+
+[features]
+default = []
+arbitrary-precision = ["serde_json/arbitrary_precision"]
+
+[dev-dependencies]
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"

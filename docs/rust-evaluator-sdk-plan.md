@@ -1,8 +1,12 @@
 # Rust evaluator and control SDK plan
 
-Status: design and task assignment, 2026-09-18. No Rust evaluator/control SDK or
-facade is implemented by this document. Existing `runtimes/rust` is the worker
-side. Planning baseline: MirrorGate `75076b0`, MirrorRust `68e36e4`.
+Status: RGE-01–07 implemented and accepted locally on 2026-09-18. See the
+[implementation status](rust-evaluator-sdk-status.md) and
+[retained evidence](rust-evaluator-sdk-evidence.json) for exact gates, source
+identities and limitations. This is not a generated Rust target, production
+publication or hosted-CI claim. Existing `runtimes/rust` remains the worker side.
+Planning baseline: MirrorGate `75076b0`, MirrorRust `68e36e4`.
+
 
 ## Objective and boundaries
 
@@ -80,8 +84,10 @@ and negative cases in parallel, but RGE-06 requires an actual composed evaluator
 | RGE-06 / RGE-07 | `rust_gate_acceptance_plan` | Shared acceptance drivers, build/test wiring, packaging tests and compatibility/docs after implementation gates |
 | Final review | Parent | Cross-module review, required gates, evidence and support claims |
 
-The agents' current assignments are planning tasks. The table reserves clear
-ownership for implementation; it does not report implementation as started.
+The user authorized implementation after committing this plan. The three GPT
+roles implemented the listed scopes; after the environment reset, the
+`rust_sdk_finish`, `rust_bridge_finish` and `rust_acceptance_finish` agents
+continued those assignments. The parent reviewed and integrated the results.
 Shared root manifests/scripts are owned by the acceptance task to prevent
 competing edits. API changes across ownership boundaries must be coordinated
 before dependent implementation starts.
@@ -109,10 +115,12 @@ receipt; Drop is only bounded best-effort cleanup, not evidence of success.
 A blocking exchange must still support deadlines/cancellation without requiring
 an unbounded wait behind the connection mutex.
 
-**Proposed Counter acceptance decision:** allow a reviewed handwritten binding
-using compiler-produced Counter contract/digest and a fixture-only identity such
-as `mirrorrust-counter-fixture-v1`. Confirm its policy/negotiation compatibility
-before implementation. Never describe it as the planned `mirrorrust-v1` generated
+**Accepted Counter acceptance decision:** allow a reviewed handwritten binding
+using compiler-produced Counter contract/digest and fixture-only identity
+`mirrorrust-counter-fixture-v1`. Existing control records admit an opaque
+profile identifier and preparation checks the exact configured value; preserve
+that policy and verify model-side negotiation in the integration gate. Never
+describe it as the planned `mirrorrust-v1` generated
 target. A general compiler-generated Rust application workflow remains a later
 Mirrors compiler milestone.
 

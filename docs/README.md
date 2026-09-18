@@ -100,8 +100,11 @@ The first profile selects Python3.12, Linux/Bubblewrap, Node24.15.0, Rust1.96.0,
 and the concrete v1 protocol. Additional backends/languages, aggregate cgroup
 quotas, production runtime packaging, and release publication remain future work.
 
-## Planned Rust evaluator support
+## Rust evaluator support
 
-The [Rust evaluator/control SDK plan](rust-evaluator-sdk-plan.md) assigns SDK,
-MirrorRust integration and acceptance work. It is a plan, not an implemented or
-released native Rust control client; the existing Rust runtime is worker-side.
+The [Rust evaluator/control SDK plan](rust-evaluator-sdk-plan.md) records the
+approved boundaries. The [implementation status](rust-evaluator-sdk-status.md)
+records the locally accepted native Rust control-v1 SDK, optional MirrorRust
+composition, package-consumer gate and real backend matrix. The crate remains
+unpublished, the Counter binding is fixture-specific, and Rust does not support
+control-v2 managed hosting.

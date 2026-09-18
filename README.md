@@ -12,7 +12,9 @@ evaluation environment, using a language-neutral port protocol.
 ## Status
 
 The initial Linux/Bubblewrap profile is implemented, with a Python supervisor,
-Node and Rust workers, strict public-port RPC, and a trusted Node proxy SDK.
+Node and Rust workers, strict public-port RPC, and trusted Node, C++ and Rust
+control clients. The Rust SDK implements control-v1 and worker-v1 only; it does
+not implement control-v2 managed hosting.
 Isolation claims apply to the configured and tested profile, not arbitrary host
 tools. Aggregate cgroup quotas, Windows/macOS backends, and other language shims
 are not implemented. See the [backend's exact limits](docs/sandbox/linux-bubblewrap.md).
@@ -71,13 +73,18 @@ commands, runtime mounts, launchers, attestation identities, and limit ceilings.
 [usage guide](https://github.com/NzSN/MirrorGate/blob/main/docs/orchestration-control-usage.md)
 and [implementation tasks](https://github.com/NzSN/MirrorGate/blob/main/docs/orchestration-control-v1-tasks.md)
 cover the controller, immutable preparation, managed transport, and native
-Node/C++ SDKs. Its
+Node/C++/Rust control-v1 SDKs. Its
 [MirrorECMA landing plan](https://github.com/NzSN/MirrorECMA/blob/main/docs/shared-orchestration-design.md)
 separates the control implementation, async replay prerequisites, native
 model facade, and cross-language acceptance. Recorded local facade results are
 in the [implementation ledger](docs/orchestration-control-v1-tasks.md). V2 hosting
 uses separate schemas and capabilities; frozen v1 and worker RPC remain unchanged.
 Production package publication remains disabled.
+
+The [Rust evaluator status](docs/rust-evaluator-sdk-status.md) records the
+control-v1 SDK, fixture-specific MirrorRust composition, local package consumer
+and real-backend acceptance. It does not claim a general generated Rust target,
+control-v2 Rust hosting, or a published crate.
 
 The optional [evaluation service](docs/evaluation-service-design.md) lets an agent,
 CI job, or application invoke the same trusted MBT harness used by source-code
@@ -155,6 +162,7 @@ unavailable backend as failure rather than silently skipping it.
 
 ```bash
 cargo fetch --manifest-path runtimes/rust/Cargo.toml --locked
+cargo fetch --manifest-path sdk/rust/Cargo.toml --locked
 npm ci --ignore-scripts
 bash scripts/build.sh
 bash scripts/test.sh

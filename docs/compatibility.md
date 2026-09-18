@@ -7,8 +7,9 @@ published release, hosted CI success or remote service deployment is claimed.
 
 [Managed hosting control v2](agent-hosting-control-v2.md) adds fresh-agent
 start/status/cancel while retaining the v1 bootstrap envelope and frozen v1
-records. Node and C++ clients select v2 explicitly. V1 callers receive no hosting
-capabilities. Worker attachment/RPC remain v1. Operator policy v2 installs closed
+records. Node and C++ clients select v2 explicitly. The Rust client supports v1
+only and receives no hosting capabilities. Worker attachment/RPC remain v1.
+Operator policy v2 installs closed
 agent profiles; availability requires the permitted backend, exact runtime/config
 identity, current dispatcher audit and resolvable credential reference.
 
@@ -59,11 +60,12 @@ acceptance sources and remaining checks are tracked in the
 | Node worker | `node-v1`, Node 24.15.0 | Native codec, lifecycle, cancellation, actual Counter and queue |
 | Rust worker | `rust-v1`, Rust 1.96.0 to build | Locked native dependencies, codec/lifecycle, actual Counter |
 | SDK packages | Initial `0.1.0` development sources | Local imports/crate path; publication disabled |
-| Native control clients | Node SDK and C++17 SDK, explicit v2 hosting | Same Python controller; owned/attached lifecycle and committed-source tests; C++ close checks child reaping |
+| Native control clients | Node SDK and C++17 SDK with explicit v2 hosting; Rust 1.96 SDK with v1 only | Same Python controller; owned/attached lifecycle, owner isolation and checked close/reaping receipts |
 | Managed agent runtime | Codex CLI 0.153.4, current profile audit | Actual SDK/MCP-harness author, dispatcher denial probes and per-run descendant cleanup |
 | Outside-agent hosting tool | `mirrorgate/hosting-tool`, stdio MCP 2024-11-05 | Actual implementer through installed protocol harness and real outside-Codex framework passed |
 | Mirrors semantics | Pinned [source contract](../protocol/source-contract.json) | Portable public type/value definitions, not a runtime dependency |
 | Evaluator integration | `mirrorgate-mirrorecma` 0.1.0, public MirrorECMA 1/2 APIs | Packed declarations, prepared/hosted local workflow, correct/faulty Counter and separate cleanup receipts |
+| Rust evaluator fixture | `mirrorgate-mirrorrust-integration` 0.1.0, `mirrorrust-counter-fixture-v1` | Local 20-row owned/attached × Node/Rust matrix, wrong-digest zero-acquisition checks, Node-independence and private-canary probes; no general generated Rust target |
 | Optional evaluation service | `mirrorgate.evaluation-service-contract/v1`, loopback HTTP | Authenticated proxy, caller isolation, bounded cancellation/retention and same-suite local/Gate-backed replay |
 
 C++ and Lean workers, non-Linux backends, cgroup aggregate quotas, crash-recovery
@@ -76,7 +78,8 @@ records the control/worker versions and build prerequisites. Language SDKs and
 the shared Python process are distributed separately. Package-consumer tests
 establish local installability. The experimental local MirrorECMA/MirrorCPP
 shared matrix is recorded in the linked acceptance ledger; hosted CI,
-publication, and released support remain pending.
+publication, and released support remain pending. The Rust evaluator's exact
+local scope is recorded in the [implementation status](rust-evaluator-sdk-status.md).
 
 Protocol version, public interface digest, frozen artifact hash, runtime profile,
 SDK package version, and private evaluation specification revision have different

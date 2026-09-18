@@ -1,7 +1,7 @@
 # Shared Orchestration Control v1 — Landing Design
 
 Status: **experimental Gate-side implementation; not released**.
-The controller, immutable preparation, managed transport, and Node/C++ SDKs are
+The controller, immutable preparation, managed transport, and Node/C++/Rust SDKs are
 implemented. Local validation and ownership are recorded in the
 [implementation ledger](https://github.com/NzSN/MirrorGate/blob/main/docs/orchestration-control-v1-tasks.md);
 the [usage guide](https://github.com/NzSN/MirrorGate/blob/main/docs/orchestration-control-usage.md)
@@ -43,12 +43,14 @@ below describes the v1 landing, not completion of that extraction.
    [worker protocol v1](https://github.com/NzSN/MirrorGate/blob/main/docs/protocol-v1.md)
    and Mirrors JSONL protocol remain unchanged. Control has its own version,
    framing limits, request correlation, and authorization.
-7. A native C++ facade is the second acceptance implementation. Node and Rust
-   **workers** alone do not establish two client facades.
+7. Native C++ and Rust facades provide independent non-Node acceptance
+   implementations. A worker runtime alone does not establish another client
+   facade.
 
-The shared control implementation belongs in MirrorGate. A Node SDK and C++
-SDK interpret the same control contract and fixtures. Neither SDK contains a
-second copy of the session transition function.
+The shared control implementation belongs in MirrorGate. Node, C++ and Rust
+SDKs interpret the same control-v1 contract and fixtures. No SDK contains a
+second copy of the session transition function. Rust is v1-only; control-v2
+hosting remains implemented by Node and C++.
 
 The accepted [agent-hosting design](agent-hosting-design.md) plans a Gate-owned
 agent host accessed through shared control by native clients. Current control
@@ -492,6 +494,7 @@ acceptance gates](managed-workflow-validation.md):
 | Existing `cli.py` | Separate `control` entry; preserve administrative `run` |
 | `sdk/node/control.mjs`, `sdk/node/managed-worker.mjs` | Public control transport and managed worker lifecycle |
 | `sdk/cpp/` | Native control and worker transport interpretation for the second facade |
+| `sdk/rust/` | Native control-v1 and worker-v1 transport interpretation for the Rust facade |
 
 Publish Node SDK subpaths `mirrorgate/control` and `mirrorgate/worker` only
 after package/declaration/fixture gates pass. The currently private package
@@ -506,9 +509,9 @@ failure precedence, slow-reader overflow, and private canaries across every
 exposed profile/tool. All requested backend guarantees must be exercised in
 the actual backend, not replaced by a subprocess mock.
 
-Run shared control fixtures through Node and C++ SDKs, then run correct and
-faulty Counter evaluations through MirrorECMA and MirrorCPP using the same
-Gate process implementation. Record facade language, worker runtime, control
+Run shared control fixtures through Node, C++ and Rust SDKs, then run correct
+and faulty Counter evaluations through MirrorECMA, MirrorCPP and the reviewed
+MirrorRust fixture using the same Gate process implementation. Record facade language, worker runtime, control
 version, backend, compiler/binding versions, and exact repository revisions
 separately. A profile stays experimental until these gates and the existing
 worker/backend gates pass.

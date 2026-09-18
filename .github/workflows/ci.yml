@@ -13,6 +13,14 @@ on:
         description: Matching Mirrors commit SHA for optional evaluator integration
         required: false
         type: string
+      mirrorrust_ref:
+        description: Matching MirrorRust commit SHA for optional Rust evaluator integration
+        required: false
+        type: string
+      rust_mirrors_ref:
+        description: Matching Mirrors commit SHA for optional Rust evaluator integration
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -29,6 +37,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@d1031067263f94b142dd6c0ce24c5eb9d02d52a0
         with:
           toolchain: 1.96.0
+          components: rustfmt, clippy
       - name: Install namespace backend and C++ SDK prerequisites
         run: |
           sudo apt-get update
@@ -38,7 +47,9 @@ jobs:
       - name: Select the pinned public Node runtime tree
         run: node --input-type=module -e 'import path from "node:path"; console.log(`MIRRORGATE_NODE_RUNTIME_ROOT=${path.dirname(path.dirname(process.execPath))}`)' >> "$GITHUB_ENV"
       - name: Fetch locked native dependencies
-        run: cargo fetch --manifest-path runtimes/rust/Cargo.toml --locked
+        run: |
+          cargo fetch --manifest-path runtimes/rust/Cargo.toml --locked
+          cargo fetch --manifest-path sdk/rust/Cargo.toml --locked
       - name: Install the locked declaration-test compiler
         run: npm ci --ignore-scripts
       - name: Protocol, language workers, and required real isolation
@@ -80,6 +91,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@d1031067263f94b142dd6c0ce24c5eb9d02d52a0
         with:
           toolchain: 1.96.0
+          components: rustfmt, clippy
       - name: Install prerequisites
         run: |
           sudo apt-get update
@@ -101,6 +113,7 @@ jobs:
           lake build mirror model_interface_gen
           cd ../MirrorGate
           cargo fetch --manifest-path runtimes/rust/Cargo.toml --locked
+          cargo fetch --manifest-path sdk/rust/Cargo.toml --locked
           bash scripts/build.sh
       - name: Private evaluator to isolated public ports
         working-directory: MirrorGate
@@ -108,3 +121,81 @@ jobs:
           MIRRORECMA_ROOT: ${{ github.workspace }}/MirrorECMA
           MIRRORS_ROOT: ${{ github.workspace }}/Mirrors
         run: node integrations/mirrorecma/smoke.mjs
+
+  rust-evaluator-integration:
+    if: ${{ github.event_name == 'workflow_dispatch' && (inputs.mirrorrust_ref != '' || inputs.rust_mirrors_ref != '') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - name: Validate explicit matching Rust revisions
+        env:
+          MIRRORRUST_REF: ${{ inputs.mirrorrust_ref }}
+          MIRRORS_REF: ${{ inputs.rust_mirrors_ref }}
+        run: |
+          [[ "$MIRRORRUST_REF" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          [[ "$MIRRORS_REF" =~ ^[0-9a-f]{40}$ ]] || exit 1
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          path: MirrorGate
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: NzSN/MirrorRust
+          ref: ${{ inputs.mirrorrust_ref }}
+          path: MirrorRust
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: NzSN/Mirrors
+          ref: ${{ inputs.rust_mirrors_ref }}
+          path: Mirrors
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24.15.0
+      - uses: dtolnay/rust-toolchain@d1031067263f94b142dd6c0ce24c5eb9d02d52a0
+        with:
+          toolchain: 1.96.0
+          components: rustfmt, clippy
+      - uses: leanprover/lean-action@50fcf42d2e460296f1a34b402e990d1b24f8b596
+        with:
+          lake-package-directory: Mirrors
+          auto-config: false
+          build: false
+          test: false
+          lint: false
+      - name: Read the matching Java pin
+        id: rust-evaluator-pins
+        working-directory: Mirrors
+        run: |
+          source tools/ci/versions.env
+          printf 'java=%s\n' "$JAVA_VERSION" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: ${{ steps.rust-evaluator-pins.outputs.java }}
+      - name: Install required isolation and native prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y bubblewrap build-essential libssl-dev pkg-config
+      - name: Select the pinned public Node runtime tree
+        run: node --input-type=module -e 'import path from "node:path"; console.log(`MIRRORGATE_NODE_RUNTIME_ROOT=${path.dirname(path.dirname(process.execPath))}`)' >> "$GITHUB_ENV"
+      - name: Install checked Apalache release
+        working-directory: Mirrors
+        run: |
+          bash tools/ci/install-apalache.sh "$RUNNER_TEMP/apalache"
+          printf 'APALACHE_MC=%s/bin/apalache-mc\n' "$RUNNER_TEMP/apalache" >> "$GITHUB_ENV"
+      - name: Build checker and fetch locked Rust dependencies
+        run: |
+          cd Mirrors
+          lake build mirror
+          cd ../MirrorGate
+          cargo fetch --manifest-path runtimes/rust/Cargo.toml --locked
+          cargo fetch --manifest-path sdk/rust/Cargo.toml --locked
+          cargo fetch --manifest-path integrations/mirrorrust/Cargo.toml --locked
+          cd ../MirrorRust
+          cargo fetch --locked
+      - name: Native Rust evaluator to isolated Node and Rust workers
+        working-directory: MirrorGate
+        env:
+          MIRRORRUST_ROOT: ${{ github.workspace }}/MirrorRust
+          MIRRORS_ROOT: ${{ github.workspace }}/Mirrors
+          MIRRORGATE_RUST_REAL_CONTROL: 1
+        run: bash conformance/control-v1/run-rust

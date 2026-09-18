@@ -1,0 +1,324 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+gate_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$gate_root"
+
+mirrorrust_root="${MIRRORRUST_ROOT:?MIRRORRUST_ROOT must name a prepared MirrorRust checkout}"
+mirrors_root="${MIRRORS_ROOT:?MIRRORS_ROOT must name a prepared Mirrors checkout}"
+mirror_bin="${MIRROR_BIN:-$mirrors_root/.lake/build/bin/mirror}"
+apalache_mc="${APALACHE_MC:?APALACHE_MC must name the exact apalache-mc executable for register acceptance}"
+node_runtime="${MIRRORGATE_NODE_RUNTIME_ROOT:?MIRRORGATE_NODE_RUNTIME_ROOT must name the pinned Node 24.15.0 worker runtime}"
+evidence_file="${MIRRORGATE_RUST_CONTROL_EVIDENCE:-$gate_root/.work/rust-control-v1-acceptance.jsonl}"
+rust_toolchain="${MIRRORGATE_RUST_TOOLCHAIN:-1.96.0}"
+export RUSTUP_TOOLCHAIN="$rust_toolchain"
+export APALACHE_MC="$apalache_mc"
+export MIRRORGATE_REQUIRE_SANDBOX=1
+
+[[ "$(python3 --version)" == "Python 3.12."* ]] || { echo 'Python 3.12 required' >&2; exit 1; }
+[[ "$(rustc --version)" == rustc\ 1.96.0\ * ]] || { echo 'Rust 1.96.0 required' >&2; exit 1; }
+[[ -x "$node_runtime/bin/node" ]] || { echo "missing pinned Node executable: $node_runtime/bin/node" >&2; exit 1; }
+[[ "$($node_runtime/bin/node --version)" == "v24.15.0" ]] || { echo 'Node worker runtime must be exactly v24.15.0' >&2; exit 1; }
+[[ -x "$mirror_bin" ]] || { echo "missing Mirrors executable: $mirror_bin" >&2; exit 1; }
+[[ -x "$apalache_mc" ]] || { echo "missing Apalache executable: $apalache_mc" >&2; exit 1; }
+[[ -f "$mirrorrust_root/Cargo.toml" ]] || { echo "invalid MirrorRust checkout: $mirrorrust_root" >&2; exit 1; }
+versions_file="$mirrors_root/tools/ci/versions.env"
+[[ -f "$versions_file" ]] || { echo "missing Mirrors toolchain pins: $versions_file" >&2; exit 1; }
+expected_apalache="$(sed -n 's/^APALACHE_VERSION=//p' "$versions_file")"
+actual_apalache="$($apalache_mc version | sed -n '1p')"
+[[ -n "$expected_apalache" && "$actual_apalache" == "$expected_apalache" ]] || {
+  echo "Apalache $expected_apalache required; selected executable reports $actual_apalache" >&2
+  exit 1
+}
+
+# This required gate must prove the actual backend, private-data denial, and
+# immutable source/build handoff. MIRRORGATE_REQUIRE_SANDBOX forbids skipping.
+PYTHONPATH="$gate_root/supervisor:$gate_root/tests" \
+  python3 -m unittest -v \
+    test_control_acceptance.ControlAcceptanceTests.test_source_profiles_deny_private_data_and_inherited_fd_then_freeze_output
+
+scratch="$(mktemp -d)"
+daemon_pid=""
+cleanup() {
+  if [[ -n "$daemon_pid" ]]; then
+    kill "$daemon_pid" 2>/dev/null || true
+    wait "$daemon_pid" 2>/dev/null || true
+  fi
+  rm -rf "$scratch"
+}
+trap cleanup EXIT
+
+mkdir -p "$scratch/submissions/node-correct" "$scratch/submissions/node-faulty" \
+  "$scratch/submissions/node-canary" "$scratch/submissions/rust" \
+  "$(dirname "$evidence_file")"
+cp "$gate_root/runtimes/node/examples/counter.mjs" "$scratch/submissions/node-correct/adapter.mjs"
+cp "$gate_root/runtimes/node/examples/faulty-counter.mjs" "$scratch/submissions/node-faulty/adapter.mjs"
+cp "$gate_root/runtimes/node/examples/counter.mjs" "$scratch/submissions/node-faulty/counter.mjs"
+cp "$gate_root/conformance/control-v1/canary-counter.mjs" "$scratch/submissions/node-canary/adapter.mjs"
+
+cargo build --manifest-path "$gate_root/runtimes/rust/Cargo.toml" --locked --offline
+cargo build --manifest-path "$gate_root/sdk/rust/Cargo.toml" --locked --offline
+integration_manifest="$gate_root/integrations/mirrorrust/Cargo.toml"
+[[ -f "$integration_manifest" ]] || { echo "missing MirrorRust integration manifest: $integration_manifest" >&2; exit 1; }
+cargo metadata --manifest-path "$integration_manifest" --locked --offline --format-version 1 \
+  > "$scratch/mirrorrust-metadata.json"
+python3 - "$scratch/mirrorrust-metadata.json" "$mirrorrust_root/Cargo.toml" <<'PY'
+import json, pathlib, sys
+metadata = json.loads(pathlib.Path(sys.argv[1]).read_text())
+expected = pathlib.Path(sys.argv[2]).resolve()
+packages = {package['id']: package for package in metadata['packages']}
+integration = next(package for package in metadata['packages']
+                   if package['name'] == 'mirrorgate-mirrorrust-integration')
+node = next(node for node in metadata['resolve']['nodes'] if node['id'] == integration['id'])
+dependency = next(dependency for dependency in node['deps'] if dependency['name'] == 'mirrorrust')
+resolved = packages[dependency['pkg']]
+manifest = pathlib.Path(resolved['manifest_path']).resolve()
+assert manifest == expected, f'MirrorRust dependency mismatch: expected {expected}, got {manifest}'
+assert resolved['source'] is None, f'MirrorRust unexpectedly resolved from {resolved["source"]}'
+print(json.dumps({'mirrorRustManifest': str(manifest), 'cargoSource': 'path'}))
+PY
+CARGO_TARGET_DIR="$scratch/mirrorrust-target" \
+  cargo test --manifest-path "$mirrorrust_root/Cargo.toml" --locked --offline --test model_interface
+cargo build --manifest-path "$integration_manifest" --locked --offline
+cargo test --manifest-path "$integration_manifest" --locked --offline
+cargo fmt --manifest-path "$integration_manifest" -- --check
+cargo clippy --manifest-path "$integration_manifest" --locked --offline --all-targets -- -D warnings
+rust_worker="$gate_root/runtimes/rust/target/debug/mirrorgate-counter-worker"
+driver="${MIRRORGATE_MIRRORRUST_DRIVER:-$gate_root/integrations/mirrorrust/target/debug/mirrorgate-mirrorrust-counter}"
+[[ -x "$rust_worker" ]] || { echo "missing pinned Rust worker: $rust_worker" >&2; exit 1; }
+[[ -x "$driver" ]] || { echo "missing MirrorRust evaluator driver: $driver" >&2; exit 1; }
+cp "$rust_worker" "$scratch/submissions/rust/worker"
+
+manifest="$gate_root/conformance/manifests/counter.json"
+trace="$gate_root/conformance/control-v1/counter.itf.json"
+spec="$mirrors_root/specs/Counter.tla"
+[[ -f "$manifest" && -f "$trace" && -f "$spec" ]] || { echo 'Counter acceptance inputs are incomplete' >&2; exit 1; }
+: > "$evidence_file"
+
+run_case() {
+  local control_mode="$1" runtime="$2" scenario="$3" output="$4"
+  local submission_override="${5:-}"
+  local policy_id="accept.rust.${runtime}.${scenario}"
+  local policy="$scratch/${control_mode}-${runtime}-${scenario}.policy.json"
+  local relative
+  local fixture_args=("$policy" "$scratch/submissions" --policy-id "$policy_id" \
+    --adapter-id "mirrorgate/$runtime" --target-profile mirrorrust-counter-fixture-v1 \
+    --state-computer-contract-version mirrors.state-computer/v1)
+  if [[ "$runtime" == "node-v1" ]]; then
+    case "$scenario" in
+      correct|generate-correct|wrong-digest) relative="node-correct" ;;
+      faulty|generate-faulty) relative="node-faulty" ;;
+      *) echo "unknown Rust evaluator scenario: $scenario" >&2; exit 1 ;;
+    esac
+    fixture_args+=(--runtime node --artifact-entry adapter.mjs)
+  else
+    relative="rust"
+    fixture_args+=(--runtime rust --artifact-entry worker)
+    [[ "$scenario" == "faulty" || "$scenario" == "generate-faulty" ]] && fixture_args+=(--faulty)
+  fi
+  [[ -n "$submission_override" ]] && relative="$submission_override"
+  python3 "$gate_root/tests/control_policy_fixture.py" "${fixture_args[@]}" >/dev/null
+
+  local endpoint="$gate_root/bin/mirrorgate"
+  if [[ "$control_mode" == "attached" ]]; then
+    local socket_dir="$scratch/socket-${runtime}-${scenario}"
+    mkdir "$socket_dir"
+    chmod 0700 "$socket_dir"
+    endpoint="$socket_dir/control.sock"
+    "$gate_root/bin/mirrorgate" control --unix-socket "$endpoint" --policy-file "$policy" &
+    daemon_pid=$!
+    for _ in {1..200}; do
+      [[ -S "$endpoint" ]] && break
+      sleep 0.01
+    done
+    [[ -S "$endpoint" ]] || { echo "attached Gate did not create $endpoint" >&2; exit 1; }
+  fi
+
+  local canary="mirrorgate-private-canary-${RANDOM}-${RANDOM}"
+  local row="$scratch/row-${control_mode}-${runtime}-${scenario}-${RANDOM}.json"
+  MIRRORGATE_PRIVATE_CANARY="$canary" \
+    "$driver" "$control_mode" "$endpoint" "$policy" "$policy_id" "$manifest" \
+      "$relative" "$runtime" "$mirror_bin" "$spec" "$trace" "$scenario" > "$row"
+  if grep -Fq -- "$canary" "$row"; then
+    echo 'private canary leaked into the public evaluator evidence row' >&2
+    exit 1
+  fi
+  cat "$row" >> "$output"
+
+  if [[ "$control_mode" == "attached" ]]; then
+    kill "$daemon_pid"
+    wait "$daemon_pid" 2>/dev/null || true
+    daemon_pid=""
+  fi
+}
+
+for control_mode in owned attached; do
+  for runtime in node-v1 rust-v1; do
+    for scenario in correct faulty wrong-digest generate-correct generate-faulty; do
+      run_case "$control_mode" "$runtime" "$scenario" "$evidence_file"
+    done
+  done
+done
+
+python3 - "$evidence_file" <<'PY'
+import json, pathlib, sys
+
+path = pathlib.Path(sys.argv[1])
+rows = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+assert len(rows) == 20, len(rows)
+expected = {
+    (control, worker, scenario)
+    for control in ('owned', 'attached')
+    for worker in ('node-v1', 'rust-v1')
+    for scenario in ('correct', 'faulty', 'wrong-digest', 'generate-correct', 'generate-faulty')
+}
+assert {(row['controlMode'], row['workerRuntime'], row['sut']) for row in rows} == expected
+for row in rows:
+    required = {
+        'schema', 'facade', 'controlMode', 'workerRuntime', 'backend', 'sut', 'resultStatus',
+        'replay', 'cleanup', 'controlShutdown', 'controlProcessState',
+        'bindingFactoryCalls', 'workerAcquisitions', 'workerStartedEvents',
+        'nodeEvaluator', 'mirrorEcmaDependency',
+    }
+    assert required <= set(row), row
+    assert row['schema'] == 'mirrors.shared-orchestration-evidence/v1'
+    assert row['facade'] == 'mirrorrust'
+    assert row['backend'] == 'linux-bubblewrap-v1'
+    assert row['cleanup'] == 'succeeded' and row['controlShutdown'] == 'confirmed'
+    assert row['controlProcessState'] in (
+        {'exited', 'signaled', 'reaped-unknown'} if row['controlMode'] == 'owned' else {'not-owned'})
+    assert row['nodeEvaluator'] is False and row['mirrorEcmaDependency'] is False
+    expected_replay = 'generate' if row['sut'].startswith('generate-') else 'traces'
+    assert row['replay'] == expected_replay
+    expected_status = ('passed' if row['sut'] in ('correct', 'generate-correct') else
+                       'negotiation-rejected' if row['sut'] == 'wrong-digest' else 'mismatch')
+    assert row['resultStatus'] == expected_status, row
+    if row['sut'] == 'wrong-digest':
+        assert (row['bindingFactoryCalls'], row['workerAcquisitions'],
+                row['workerStartedEvents']) == (0, 0, 0), row
+        if 'adapterDispatches' in row:
+            assert row['adapterDispatches'] == 0, row
+    else:
+        assert (row['bindingFactoryCalls'], row['workerAcquisitions'],
+                row['workerStartedEvents']) == (1, 1, 1), row
+PY
+
+# A Rust evaluator with a Rust worker must not require a Node evaluator/runtime.
+# Put a failing Node sentinel first on PATH and require that it remains untouched.
+mkdir "$scratch/no-node"
+sentinel_log="$scratch/node-sentinel.log"
+cat > "$scratch/no-node/node" <<'SH'
+#!/usr/bin/env bash
+printf 'node invoked\n' >> "${MIRRORGATE_NODE_SENTINEL_LOG:?}"
+exit 97
+SH
+chmod +x "$scratch/no-node/node"
+sentinel_evidence="$scratch/rust-only.jsonl"
+PATH="$scratch/no-node:$PATH" MIRRORGATE_NODE_SENTINEL_LOG="$sentinel_log" \
+  run_case owned rust-v1 correct "$sentinel_evidence"
+[[ ! -e "$sentinel_log" ]] || { echo 'Rust evaluator or Rust worker invoked Node' >&2; exit 1; }
+python3 - "$sentinel_evidence" <<'PY'
+import json, pathlib, sys
+rows = [json.loads(line) for line in pathlib.Path(sys.argv[1]).read_text().splitlines() if line.strip()]
+assert len(rows) == 1
+row = rows[0]
+assert row['facade'] == 'mirrorrust' and row['workerRuntime'] == 'rust-v1'
+assert row['resultStatus'] == 'passed' and row['cleanup'] == 'succeeded'
+assert row['nodeEvaluator'] is False
+PY
+echo 'Rust evaluator + rust-v1 worker passed with the fail-if-invoked Node sentinel untouched.'
+
+# This submitted adapter inspects its actual inputs, environment, proc data, and
+# frozen artifact. Any private marker changes its observation and causes a real
+# model mismatch; the public evidence-row scan above covers returned output.
+canary_evidence="$scratch/canary-probe.jsonl"
+run_case owned node-v1 correct "$canary_evidence" node-canary
+python3 - "$canary_evidence" <<'PY'
+import json, pathlib, sys
+rows = [json.loads(line) for line in pathlib.Path(sys.argv[1]).read_text().splitlines() if line.strip()]
+assert len(rows) == 1
+row = rows[0]
+assert row['workerRuntime'] == 'node-v1' and row['resultStatus'] == 'passed'
+assert row['cleanup'] == 'succeeded' and row['controlShutdown'] == 'confirmed'
+PY
+echo 'Private canary probe passed across worker inputs, environment, proc data, artifact, and public evidence.'
+
+python3 - "$evidence_file" "$gate_root" "$mirrorrust_root" "$mirrors_root" \
+  "$driver" "$rust_worker" "$mirror_bin" "$node_runtime/bin/node" "$apalache_mc" <<'PY'
+import hashlib, json, pathlib, subprocess, sys
+
+evidence, gate, rust_client, mirrors, driver, worker, mirror, node, apalache = map(pathlib.Path, sys.argv[1:])
+
+def output(*args, cwd=None):
+    return subprocess.check_output(args, cwd=cwd, stderr=subprocess.STDOUT, text=True, timeout=60).strip()
+
+def sha256(path):
+    digest = hashlib.sha256()
+    with path.open('rb') as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+def workspace(path):
+    names = subprocess.check_output(
+        ['git', '-C', path, 'ls-files', '-co', '--exclude-standard', '-z']).split(b'\0')
+    digest = hashlib.sha256()
+    for raw in sorted(name for name in names if name):
+        target = path / raw.decode('utf-8', 'surrogateescape')
+        digest.update(raw + b'\0')
+        digest.update(bytes.fromhex(sha256(target)) if target.is_file() else b'<missing>')
+    status = subprocess.check_output(
+        ['git', '-C', path, 'status', '--porcelain=v1', '-z']).decode('utf-8', 'surrogateescape')
+    return {
+        'head': output('git', '-C', str(path), 'rev-parse', 'HEAD'),
+        'workspaceSha256': digest.hexdigest(),
+        'statusPorcelainV1Z': status,
+    }
+
+rows = [json.loads(line) for line in evidence.read_text().splitlines() if line.strip()]
+manifest = {
+    'schema': 'mirrors.shared-orchestration-reproducibility/v1',
+    'summary': {
+        'schema': 'mirrorgate.rust-control-acceptance-summary/v1',
+        'status': 'green',
+        'rows': len(rows),
+        'backend': 'linux-bubblewrap-v1',
+    },
+    'repositories': {
+        'MirrorGate': workspace(gate),
+        'MirrorRust': workspace(rust_client),
+        'Mirrors': workspace(mirrors),
+    },
+    'toolchain': {
+        'python': output('python3', '--version'),
+        'rust': output('rustc', '--version'),
+        'cargo': output('cargo', '--version'),
+        'nodeWorkerRuntime': output(str(node), '--version'),
+        'apalache': output(str(apalache), 'version').splitlines()[0],
+        'bubblewrap': output('bwrap', '--version'),
+        'kernel': output('uname', '-srvmo'),
+    },
+    'artifacts': {
+        'driverSha256': sha256(driver),
+        'rustWorkerSha256': sha256(worker),
+        'mirrorsBinarySha256': sha256(mirror),
+        'nodeWorkerBinarySha256': sha256(node),
+    },
+    'claims': {
+        'gatePlatform': 'linux',
+        'gateBackend': 'linux-bubblewrap-v1',
+        'nodeEvaluatorRequired': False,
+        'productionPublication': False,
+        'privateCanaryChecks': {
+            'workerVisibleSurfaces': ['adapter-inputs', 'worker-environment', 'proc-self', 'frozen-artifact'],
+            'publicEvaluatorEvidence': True,
+            'rawWorkerFrameCapture': False,
+        },
+    },
+}
+manifest_path = pathlib.Path(str(evidence) + '.manifest.json')
+manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n')
+print(json.dumps(manifest['summary'], separators=(',', ':')))
+print(json.dumps({'reproducibilityManifest': str(manifest_path),
+                  'manifestSha256': sha256(manifest_path)}, separators=(',', ':')))
+PY

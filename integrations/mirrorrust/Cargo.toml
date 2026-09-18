@@ -1,0 +1,22 @@
+[package]
+name = "mirrorgate-mirrorrust-integration"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+publish = false
+
+[lib]
+name = "mirrorgate_mirrorrust_integration"
+path = "src/lib.rs"
+
+[[bin]]
+name = "mirrorgate-mirrorrust-counter"
+path = "src/main.rs"
+
+[dependencies]
+mirrorgate-sdk = { path = "../../sdk/rust" }
+mirrorrust = { path = "../../../MirrorRust" }
+num-bigint = "=0.4.6"
+serde = { version = "=1.0.228", features = ["derive"] }
+serde_json = { version = "=1.0.150", features = ["arbitrary_precision", "unbounded_depth"] }
+

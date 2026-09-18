@@ -10,6 +10,7 @@ mirror_bin="${MIRROR_BIN:-$mirrors_root/.lake/build/bin/mirror}"
 apalache_mc="${APALACHE_MC:?APALACHE_MC must name the exact apalache-mc executable for register acceptance}"
 dependency_cache="${MIRRORCPP_DEPENDENCY_CACHE:-$mirrorcpp_root/build/_deps}"
 evidence_file="${MIRRORGATE_CONTROL_EVIDENCE:-$gate_root/.work/control-v1-acceptance.jsonl}"
+cpp_build_jobs="${MIRRORGATE_CPP_BUILD_JOBS:-2}"
 
 [[ "$(node --version)" == "v24.15.0" ]] || { echo 'Node 24.15.0 required' >&2; exit 1; }
 [[ "$(python3 --version)" == "Python 3.12."* ]] || { echo 'Python 3.12 required' >&2; exit 1; }
@@ -20,6 +21,7 @@ export APALACHE_MC="$apalache_mc"
 [[ -f "$mirrorcpp_root/include/mirrorcpp/client.hpp" ]] || { echo "invalid MirrorCPP checkout: $mirrorcpp_root" >&2; exit 1; }
 [[ -x "$mirrorecma_root/node_modules/.bin/tsc" ]] || { echo "MirrorECMA locked TypeScript install is missing: $mirrorecma_root" >&2; exit 1; }
 [[ -d "$dependency_cache/nlohmann_json-src" ]] || { echo "missing prepared MirrorCPP dependency cache: $dependency_cache" >&2; exit 1; }
+[[ "$cpp_build_jobs" =~ ^[1-9][0-9]*$ ]] || { echo 'MIRRORGATE_CPP_BUILD_JOBS must be a positive integer' >&2; exit 1; }
 
 scratch="$(mktemp -d)"
 daemon_pid=""
@@ -49,7 +51,7 @@ cmake -S "$gate_root/integrations/mirrorcpp" -B "$scratch/cpp-build" \
   -DMIRRORCPP_ROOT="$mirrorcpp_root" \
   -DMIRRORCPP_DEPENDENCY_CACHE="$dependency_cache" \
   -DBUILD_TESTING=OFF
-cmake --build "$scratch/cpp-build" --parallel
+cmake --build "$scratch/cpp-build" --parallel "$cpp_build_jobs"
 driver="$scratch/cpp-build/mirrorgate_mirrorcpp_counter"
 "$scratch/cpp-build/mirrorgate_mirrorcpp_receipt_tests"
 
@@ -230,7 +232,7 @@ assert cancel['tickDispatched'] is True
 def revision(path):
     return subprocess.check_output(['git', '-C', path, 'rev-parse', 'HEAD'], text=True).strip()
 def output(*args, cwd=None):
-    return subprocess.check_output(args, cwd=cwd, stderr=subprocess.STDOUT, text=True, timeout=60).strip()
+    return subprocess.check_output(args, cwd=cwd, stderr=subprocess.STDOUT, text=True, timeout=180).strip()
 def sha256(path):
     digest = hashlib.sha256()
     with path.open('rb') as stream:
@@ -273,7 +275,7 @@ manifest = {
         'cxx': output('c++', '--version').splitlines()[0],
         'cmake': output('cmake', '--version').splitlines()[0],
         'typescript': output(str(ecma / 'node_modules/.bin/tsc'), '--version'),
-        'lean': output('lake', 'env', 'lean', '--version', cwd=mirrors),
+        'lean': output('lean', '--version', cwd=mirrors),
         'apalache': output(str(apalache), 'version').splitlines()[0],
         'bubblewrap': output('bwrap', '--version'),
         'kernel': output('uname', '-srvmo'),
