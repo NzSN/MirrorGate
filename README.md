@@ -1,5 +1,8 @@
 # MirrorGate
 
+Choose evaluator SDK and worker language independently using the
+[client-language support guide](docs/client-language-support.md).
+
 For the framework map, start with the [application integration guide](../Mirrors/Docs/application-integration-guide.md).
 To use a separate model server, read [restricted evaluation with remote Mirrors](docs/remote-mirrors.md).
 
@@ -140,6 +143,7 @@ supervisor/     Python policy, snapshots, Bubblewrap launch, and cleanup
 runtimes/       Node and Rust shims; other languages can implement the protocol
 sdk/node/       Trusted control client and worker port proxy
 sdk/cpp/        Native C++ control client and worker port proxy
+sdk/rust/       Native Rust control-v1 client and managed-worker proxy
 conformance/    Shared positive, malformed-message, and isolation fixtures
 integrations/   Optional trusted evaluator integrations
 docs/           Designs, decisions, and implementation plans

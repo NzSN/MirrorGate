@@ -1,5 +1,8 @@
 # MirrorGate design index
 
+Use [client-language support](client-language-support.md) to select the native
+SDK, evaluator facade and worker runtime for your application.
+
 Remote model-server placement and trusted evaluator credentials: [remote Mirrors integration](remote-mirrors.md).
 
 Recorded on 2026-09-06 from the architecture discussion establishing MirrorGate.

@@ -1,5 +1,9 @@
 # Restricted evaluation with a remote Mirrors server
 
+The transport-factory examples below describe the Node/MirrorECMA integration.
+The current Rust evaluator facade starts Mirrors over local stdio; its base
+model client separately supports TCP/mTLS. See [language support](client-language-support.md).
+
 MirrorGate can isolate the implementation while the trusted evaluator connects
 to a separate Mirrors server. Start with the
 [framework application guide](../../Mirrors/Docs/application-integration-guide.md),

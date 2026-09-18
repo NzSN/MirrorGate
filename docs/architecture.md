@@ -1,5 +1,9 @@
 # MirrorGate architecture
 
+Native evaluator SDKs now include Node, C++ and Rust. Rust supports control-v1;
+Node/C++ also support control-v2 hosting. See [language support](client-language-support.md)
+and [Rust acceptance](rust-evaluator-sdk-status.md) for current scope.
+
 Status: destination-integrated Linux profile with managed hosting and external
 MBT integration, 2026-09-09; coordinated local gates passed. The
 [backend guide](sandbox/linux-bubblewrap.md) and [hosting ledger](agent-hosting-tasks.md)
@@ -185,7 +189,7 @@ an independent path to evaluator resources.
 
 The agent-host node is implemented by Gate's audited runtime adapter. Its trusted
 process and model credentials remain outside the writable authoring environment.
-Native clients request hosting through [shared control v2](agent-hosting-control-v2.md)
+Node/C++ clients request hosting through [shared control v2](agent-hosting-control-v2.md)
 without implementing their own launchers. External hosts and human authoring
 remain optional integrations with their own tool/context obligations. See the
 [hosting lifecycle](agent-hosting-design.md#lifecycle-and-failure-rules).
@@ -285,8 +289,11 @@ implemented; other language workers and backends remain extensions.
 Mirrors remains authoritative for model-interface resolution and generation.
 MirrorGate consumes versioned public artifacts and provides SDK/protocol
 interfaces for generated code to target. It does not duplicate the resolver or
-depend on MirrorECMA's private modules. Gate-owned integrations depend on public
-MirrorGate and MirrorECMA interfaces through explicit compatible versions.
+depend on MirrorECMA's private modules. Gate-owned integrations compose public
+Gate interfaces with the selected model client: MirrorECMA, MirrorCPP or
+MirrorRust. They retain separate compatibility/acceptance scopes, and native
+C++/Rust evaluators do not require a Node evaluator. See
+[client-language support](client-language-support.md).
 The coordinated MirrorECMA 2 core does not depend on Gate's SDK or lifecycle;
 its removed sandbox exports are available through the external package's
 compatibility entry point. The task ledger links completed destination/core
