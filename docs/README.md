@@ -99,3 +99,9 @@ The central decisions are:
 The first profile selects Python3.12, Linux/Bubblewrap, Node24.15.0, Rust1.96.0,
 and the concrete v1 protocol. Additional backends/languages, aggregate cgroup
 quotas, production runtime packaging, and release publication remain future work.
+
+## Planned Rust evaluator support
+
+The [Rust evaluator/control SDK plan](rust-evaluator-sdk-plan.md) assigns SDK,
+MirrorRust integration and acceptance work. It is a plan, not an implemented or
+released native Rust control client; the existing Rust runtime is worker-side.
