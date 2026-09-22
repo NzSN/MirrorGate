@@ -14,6 +14,7 @@ from mirrorgate.control_policy import (PolicyCatalog, example_policy_document,
                                        example_rust_policy_document)
 from mirrorgate.preparation import BackendError, BackendOwner, ControlBackend
 from mirrorgate.protocol import encode_frame
+from mirrorgate.recovery_journal import JournalError, RecoveryJournal, inspect_records
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -166,6 +167,42 @@ class ControlBackendTests(unittest.TestCase):
             "authoringProcesses": 0, "buildProcesses": 0,
             "workers": 0, "snapshots": 0})
         self.assertTrue(backend.close().complete)
+
+    def test_durable_state_root_records_intent_before_owned_resources(self):
+        submission = self.submissions / "journaled"
+        submission.mkdir()
+        (submission / "adapter.mjs").write_text("fixed")
+        state_root = self.root / "state-root"
+        state_root.mkdir(mode=0o700)
+        backend = ControlBackend(PolicyCatalog.from_document(self.document()),
+                                 state_root=state_root)
+        owner = BackendOwner("connection", os.getuid(), "9" * 32)
+        state = backend.open_session(
+            owner=owner, policy_id="test.node",
+            submission={"kind": "prebuilt", "input": {
+                "rootId": "submission", "relativePath": "journaled"}},
+            runtime="node-v1", manifest_bytes=MANIFEST_BYTES)
+        records = inspect_records(state_root).records
+        self.assertTrue(records)
+        self.assertTrue(all(record["phase"] != "allocation_intent" for record in records))
+        self.assertTrue(all(record["identity"] for record in records))
+        self.assertTrue(backend.cleanup_session(
+            state, reason="normal", cancel_event=threading.Event()).complete)
+        self.assertTrue(backend.close().complete)
+        records = inspect_records(state_root).records
+        self.assertTrue(all(record["phase"] == "reclaimed" for record in records))
+
+    def test_durable_backend_refuses_abandoned_root_before_allocation(self):
+        state_root = self.root / "abandoned-root"
+        state_root.mkdir(mode=0o700)
+        with RecoveryJournal(state_root, role="controller") as journal:
+            journal.claim_intent(session_id="old-session", resource_id="old-resource",
+                                 kind="filesystem", stage="preparation")
+        before = tuple((state_root / "resources").iterdir())
+        with self.assertRaisesRegex(JournalError, "explicit offline recovery"):
+            ControlBackend(PolicyCatalog.from_document(self.document()),
+                           state_root=state_root)
+        self.assertEqual(tuple((state_root / "resources").iterdir()), before)
 
     def test_cleanup_does_not_remove_leases_under_an_inflight_freeze(self):
         submission = self.submissions / "node"

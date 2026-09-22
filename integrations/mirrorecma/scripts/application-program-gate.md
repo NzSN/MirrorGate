@@ -26,6 +26,30 @@ node integrations/mirrorecma/scripts/application-program-gate.mjs persistent-tra
 node integrations/mirrorecma/scripts/application-program-gate.mjs lease-service --receipt /private/new-lease.json
 ```
 
+The installed qualification command is:
+
+```bash
+RUNTIME/runtimes/node/bin/node \
+  RUNTIME/packages/mirrorgate-mirrorecma/scripts/application-program-gate-all.mjs \
+  PRIVATE_OUTPUT
+```
+
+The wrapper accepts only an empty owner-only mode-`0700` output directory. It
+derives `RUNTIME/installed-registry.json`, runs the installed single-application
+runner once each for WorkQueue, PersistentTransfer and LeaseService, and retains
+`work-queue-gate-receipt.json`, `persistent-transfer-gate-receipt.json` and
+`lease-service-gate-receipt.json`. These are the native
+`mirrorgate.application-validation/v2` results. The stdout summary does not
+replace them with a synthetic aggregate receipt.
+
+The installed registry binds the Mirror executable, application tree, Node
+runtime, framework input, absolute Python executable, supervisor Python root and
+a Gate Node shim root containing both `runtimes/node/worker.mjs` and
+`sdk/node/protocol.mjs`. The integration package includes the single runner,
+aggregate wrapper and `application-policy.py`. No checkout path,
+`MIRRORECMA_ROOT`, `MIRROR_BIN`, compiler or model checker participates in the
+installed campaigns.
+
 The runner derives model identity from the generated handle and supplies only
 operator policy, the pinned runtime and approved submission roots. Its Node ESM
 profile selects exact source files without a custom build command or hooks. Each case gets frozen source/build

@@ -19,8 +19,16 @@ Node and Rust workers, strict public-port RPC, and trusted Node, C++ and Rust
 control clients. The Rust SDK implements control-v1 and worker-v1 only; it does
 not implement control-v2 managed hosting.
 Isolation claims apply to the configured and tested profile, not arbitrary host
-tools. Aggregate cgroup quotas, Windows/macOS backends, and other language shims
-are not implemented. See the [backend's exact limits](docs/sandbox/linux-bubblewrap.md).
+tools. Optional cgroup-v2 aggregate quotas require an operator-delegated parent;
+this host has no real-delegation acceptance evidence. Windows/macOS backends and
+other language shims are not implemented. See the
+[backend's exact limits](docs/sandbox/linux-bubblewrap.md).
+Optional offline crash recovery now journals and reclaims exact Gate-owned
+filesystem resources below an operator state root. When the administrator
+supplies the same pinned delegated cgroup-v2 parent, recovery also validates,
+kills, observes, and removes an exact owned cgroup child. Process recovery
+remains ambiguity-only; see the
+[recovery lifecycle and claim limits](docs/sandbox/recovery-design.md).
 Policy-v2 source roots may use implemented
 [filtered source views](docs/sandbox/supervisor-design.md#filtered-source-views)
 to expose an exact repository subset during authoring and preparation.
@@ -52,6 +60,9 @@ The [sandbox documentation](docs/sandbox/README.md) groups the
 [sandbox walkthrough](docs/sandbox/design.md), backend, policy, and
 blind-validation references. Together they follow a tool request through
 trusted admission, Bubblewrap isolation, monitoring, snapshots, and cleanup.
+The separate [crash-recovery design](docs/sandbox/recovery-design.md) specifies
+the implemented durable ownership, offline filesystem and delegated-cgroup
+recovery scope, native recovery receipt, and unimplemented process guarantees.
 
 The [agent-hosting implementation](docs/agent-hosting-design.md) provides
 implementer launch, configuration, restricted tools, and cleanup through

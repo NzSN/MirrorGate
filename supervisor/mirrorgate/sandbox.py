@@ -14,7 +14,7 @@ import sys
 import tempfile
 import threading
 import time
-from typing import Hashable
+from typing import Callable, Hashable
 
 from .artifacts import FrozenLease, _open_directory, freeze_tree, remove_snapshot
 from .policy import AdmissionError, Limits, ToolRequest, TrustedConfig
@@ -31,7 +31,8 @@ class RunResult:
 
 class SandboxProcess:
     """One bounded process tree. Readers drain bytes, with b'' marking EOF."""
-    def __init__(self, process: subprocess.Popen, limits: Limits):
+    def __init__(self, process: subprocess.Popen, limits: Limits,
+                 terminal_callback: Callable[[subprocess.Popen], None] | None = None):
         self.process = process
         self.limits = limits
         self.started = time.monotonic()
@@ -43,6 +44,7 @@ class SandboxProcess:
         self._lock = threading.Lock()
         self._input_lock = threading.Lock()
         self._eof_at: float | None = None
+        self._terminal_callback = terminal_callback
         self._thread = threading.Thread(target=self._monitor, daemon=True, name="mirrorgate-monitor")
         self._thread.start()
 
@@ -148,6 +150,11 @@ class SandboxProcess:
             self.close_stdin(terminate_after_grace=False)
             self._stdout.put(b"")
             self._stderr.put(b"")
+            if self._terminal_callback is not None:
+                try:
+                    self._terminal_callback(self.process)
+                except BaseException:
+                    self.reason = "supervisor_error"
             self._done.set()
 
 
@@ -155,8 +162,16 @@ class GateSession:
     """Trusted controller constructs this once; agent tools only call run/start."""
     def __init__(self, config: TrustedConfig, *, _workspace_lease: FrozenLease | None = None,
                  _lease_owner: Hashable | None = None,
-                 _readonly_leases: tuple[tuple[FrozenLease, Hashable, str], ...] = ()):
+                 _readonly_leases: tuple[tuple[FrozenLease, Hashable, str], ...] = (),
+                 _process_intent: Callable[[], None] | None = None,
+                 _process_started: Callable[[subprocess.Popen], None] | None = None,
+                 _process_failed: Callable[[], None] | None = None,
+                 _process_terminal: Callable[[subprocess.Popen], None] | None = None):
         self.config = config.checked()
+        self._process_intent = _process_intent
+        self._process_started = _process_started
+        self._process_failed = _process_failed
+        self._process_terminal = _process_terminal
         if sys.platform != "linux":
             raise AdmissionError("linux-bubblewrap-v1 requires Linux")
         if os.geteuid() == 0:
@@ -243,15 +258,20 @@ class GateSession:
     def from_frozen(cls, *, profile: str, lease: FrozenLease, owner: Hashable,
                     runtime_mounts=(), limits: Limits | None = None,
                     output: str | Path | None = None,
-                    readonly_leases: tuple[tuple[FrozenLease, Hashable, str], ...] = ()) -> "GateSession":
+                    readonly_leases: tuple[tuple[FrozenLease, Hashable, str], ...] = (),
+                    process_hooks: tuple[Callable | None, Callable | None,
+                                         Callable | None, Callable | None] | None = None) -> "GateSession":
         """Launch only from an owner-checked supervisor snapshot lease."""
         if profile not in ("build", "execution"):
             raise AdmissionError("frozen launches are build or execution only")
         workspace = lease._mount_path(owner)
         config = TrustedConfig(profile, workspace, output=output,
                                runtime_mounts=tuple(runtime_mounts), limits=limits or Limits())
+        hooks = process_hooks or (None, None, None, None)
         return cls(config, _workspace_lease=lease, _lease_owner=owner,
-                   _readonly_leases=readonly_leases)
+                   _readonly_leases=readonly_leases,
+                   _process_intent=hooks[0], _process_started=hooks[1],
+                   _process_failed=hooks[2], _process_terminal=hooks[3])
 
     @property
     def mount_path(self) -> str:
@@ -299,11 +319,51 @@ class GateSession:
         self._processes = []
         # The helper sets limits in a fresh Python process; no unsafe preexec_fn
         # is run in the multithreaded evaluator.
-        argv = [sys.executable, "-m", "mirrorgate.sandbox", "--child", json.dumps(asdict(self.config.limits)), *self.command(request)]
+        barrier_read, barrier_write = os.pipe2(os.O_CLOEXEC)
+        argv = [sys.executable, "-P", "-m", "mirrorgate.sandbox", "--child",
+                json.dumps(asdict(self.config.limits)), "--barrier-fd",
+                str(barrier_read), *self.command(request)]
         package_root = str(Path(__file__).resolve().parents[1])
         env = {"PATH": "/usr/local/bin:/usr/bin:/bin", "PYTHONPATH": package_root, "LANG": "C.UTF-8"}
-        proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, close_fds=True, pass_fds=tuple(self._fds), start_new_session=True, bufsize=0)
-        handle = SandboxProcess(proc, self.config.limits)
+        if self._process_intent is not None:
+            try:
+                self._process_intent()
+            except BaseException:
+                os.close(barrier_read)
+                os.close(barrier_write)
+                raise
+        try:
+            proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE, env=env, close_fds=True,
+                                    pass_fds=(*self._fds, barrier_read),
+                                    start_new_session=True, bufsize=0)
+        except BaseException:
+            os.close(barrier_read)
+            os.close(barrier_write)
+            if self._process_failed is not None:
+                self._process_failed()
+            raise
+        os.close(barrier_read)
+        try:
+            if self._process_started is not None:
+                self._process_started(proc)
+            os.write(barrier_write, b"1")
+        except BaseException:
+            os.close(barrier_write)
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            proc.wait()
+            for pipe in (proc.stdin, proc.stdout, proc.stderr):
+                if pipe is not None:
+                    pipe.close()
+            if self._process_failed is not None:
+                self._process_failed()
+            raise
+        os.close(barrier_write)
+        handle = SandboxProcess(proc, self.config.limits,
+                                terminal_callback=self._process_terminal)
         self._processes.append(handle)
         return handle
 
@@ -368,12 +428,21 @@ def _child() -> None:
         raise OSError(ctypes.get_errno(), "cannot establish launch restrictions")
     if os.getppid() != parent or parent == 1:
         os._exit(125)
+    if len(sys.argv) < 7 or sys.argv[3] != "--barrier-fd":
+        os._exit(125)
+    barrier_fd = int(sys.argv[4])
+    try:
+        release = os.read(barrier_fd, 1)
+    finally:
+        os.close(barrier_fd)
+    if release != b"1":
+        os._exit(125)
     os.umask(0o077)
-    os.execve(sys.argv[3], sys.argv[3:], {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"})
+    os.execve(sys.argv[5], sys.argv[5:], {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"})
 
 
 if __name__ == "__main__":
-    if len(sys.argv) > 3 and sys.argv[1] == "--child":
+    if len(sys.argv) > 5 and sys.argv[1] == "--child":
         _child()
     else:
         raise SystemExit("internal launch helper; use mirrorgate.cli")

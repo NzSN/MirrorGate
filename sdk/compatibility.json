@@ -27,6 +27,18 @@
   },
   "capabilityNegotiationRequired": true,
   "ownedProcessCloseReceipt": "checked-reap-v1",
+  "recovery": {
+    "journalSchema": "mirrorgate.recovery-journal/v1",
+    "receiptSchema": "mirrorgate.recovery-receipt/v1",
+    "mode": "offline-explicit-reclaim",
+    "sessionAdoption": false
+  },
+  "aggregateQuota": {
+    "capability": "quota.aggregate-v1",
+    "policySchema": "mirrorgate.control-policy/v3",
+    "requiresOperatorDelegation": true,
+    "localRealAcceptance": false
+  },
   "productionPublication": false,
   "modelFacadeAcceptance": "experimental-local-shared-matrix-verified",
   "modelFacadeEvidenceLedger": "https://github.com/NzSN/MirrorECMA/blob/main/docs/shared-orchestration-acceptance.md",

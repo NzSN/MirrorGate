@@ -73,7 +73,15 @@ output and remains below its configured workspace root for trusted promotion. Ab
 worker processes and releases namespace mounts, but can leave its public
 snapshot directory in the host temporary directory. Operators must remove
 abandoned directories after establishing that the owning controller has exited;
-this first backend does not provide crash-recovery garbage collection.
+this first backend does not provide crash-recovery garbage collection unless the
+controller was explicitly configured with a durable state root.
+The [recovery design](recovery-design.md) defines the optional implemented
+offline journal and exact filesystem reclamation workflow. Controllers must be
+started with an operator-created `--state-root`; the default profile still has
+only in-process cleanup. Post-restart process and descendant-tree ownership is
+reported ambiguous. When the operator supplies the original pinned delegated
+cgroup-v2 parent, recovery can instead validate the exact cgroup identity, use
+`cgroup.kill`, wait for `populated 0`, and remove that child.
 
 ## Enforced bounds and limitations
 
@@ -86,14 +94,50 @@ raised by submitted code. The address-space limit is not an RSS guarantee;
 Node v24 starts under 4 GiB here, but other V8 builds may need an explicitly
 approved larger value to reserve virtual memory.
 
-These rlimits do **not** provide aggregate cgroup memory/CPU/PID accounting.
+These rlimits do **not** provide aggregate cgroup memory/CPU/PID accounting in
+the default profile. Control-policy v3 can require the optional
+`quota.aggregate-v1` profile when the trusted controller is given an existing
+operator-delegated `--cgroup-parent`. Gate validates cgroup v2, serving-UID
+ownership, and enabled `cpu`, `memory`, and `pids` controllers; creates one
+private session child; sets `cpu.max`, `memory.max`, and `pids.max`; and joins
+the trusted launcher before releasing its execution barrier. It records bounded
+controller observations and refuses admission when delegation is unavailable.
+Gate never provisions delegation or edits host service configuration.
+
+The aggregate implementation has mock-backed contract coverage, but this host
+does not supply a writable delegated parent. The required real acceptance tier
+is therefore unavailable here and aggregate enforcement is not locally
+qualified. CPU quota means bandwidth per period and observed throttling in
+`cpu.stat`; it is not a cumulative CPU-time guarantee.
+
+The closed `mirrorgate.control-policy/v3` catalog extends v2 policies with one
+required `aggregateLimits` object containing positive bounded `pidsMax`,
+`memoryMax`, `cpuQuotaMicros`, and `cpuPeriodMicros` values. V1 and v2 reject
+those fields. The trusted control CLI selects the already-delegated parent with
+`--cgroup-parent`; callers and agent tools cannot supply or change it.
+
+Kernel semantics follow the official
+[cgroup v2 documentation](https://docs.kernel.org/admin-guide/cgroup-v2.html):
+controllers must be available and enabled top-down through
+`cgroup.subtree_control`; delegation containment prevents a non-root delegatee
+from moving tasks across the delegation boundary; `cgroup.kill` sends SIGKILL
+to the whole owned subtree; and `cpu.max` is bandwidth per period whose
+throttling is observed in `cpu.stat`, not cumulative CPU time. `memory.max`
+covers hierarchical memory usage and can trigger an in-cgroup OOM; swap remains
+separately governed by `memory.swap.max` and is not limited by this profile.
+Creating a new process session with `setsid()` does not change cgroup membership;
+descendants inherit the joined cgroup. The sandbox does not mount cgroupfs, so
+submitted code receives no controller path with which to attempt migration.
+
+Without that explicitly selected profile, the following limitation remains:
 `RLIMIT_NPROC` is scoped to the real UID, can interact with other processes, and
 counts threads on Linux. A bound below existing UID thread usage can prevent
 namespace admission. It is not a per-sandbox PID quota. The backend rejects
 requested aggregate memory, CPU, PID, or disk quotas, external networking, and
 other unsupported capabilities. It does not claim protection against all host
 resource exhaustion: many files in an authoring/output host mount, or aggregate
-memory across processes, require a future quota/cgroup backend. Deploy hostile
+memory across processes, require the explicitly selected delegated-cgroup
+profile or another stronger backend. Deploy hostile
 workloads on an expendable dedicated host/VM when stronger denial-of-service
 containment is needed. The kernel and bubblewrap remain trusted; this backend
 does not add a syscall seccomp allowlist.

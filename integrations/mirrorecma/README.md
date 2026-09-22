@@ -156,6 +156,36 @@ or `unconfirmed` separately from model conformance. Cleanup failures and remaini
 resources are trusted evidence, not an agent-visible projection. The local
 workflow and optional service compose this provider without duplicating admission logic.
 
+## Fixed-baseline mutation campaigns
+
+`evaluateGateCampaign` runs MirrorECMA's public `runMutationCampaign` helper
+through the existing `evaluateSuite` lifecycle. Each case receives its own
+operator-approved environment/submission. A behavioral kill requires the exact
+declared mismatch, successful local cleanup, and a required `gate-physical`
+scope derived only from Gate's trusted cleanup receipt with no remaining
+resources. Missing or unconfirmed physical cleanup cannot be replaced by the
+suite's cooperative cleanup.
+
+Observer fidelity is also explicit. The generic helper accepts a trusted probe
+callback; without it, probe status is `not_run` and campaign acceptance is
+incomplete. It never infers probe success from the adapter observer. The selected
+LeaseService fixture uses a narrower executable claim: the frozen submission
+contains the same protected service and `fidelity.mjs` wrapper used locally. On
+every observation the wrapper independently reads live service fields and checks
+agreement before returning the report. It receives no model expected state. This
+establishes fidelity for those fixed fixture bytes only; it is not universal
+observer-honesty inference.
+
+The helper can request one private reproduction capture for each exact kill.
+Capture/persistence failures are recorded separately and do not rewrite campaign
+behavior. A real LeaseService run on 2026-09-22 exercised correct, four mutants,
+crash, hang and cancellation in Bubblewrap with fixed-fixture fidelity enforced
+and physical cleanup confirmed. Because E1 command registration/catalog A
+selection did not precede that run, its receipt is retained only as
+`historical-unqualified`; no `runRef` or durable reproduction bundle is claimed.
+A qualifying rerun must use the registered E2 command and finalized evidence
+flow from the start.
+
 ## Legacy migration
 
 Existing consumers may change their Gate-aware imports to:
@@ -181,6 +211,11 @@ evaluates WorkQueue, persistent transfer and lease submissions through this
 workflow. It includes real worker failure/cleanup controls and a separate
 actual restricted-author mode using an operator-approved profile. It is distinct
 from the installed Counter consumer below.
+
+Qualification uses the installed all-application wrapper documented there. It
+retains three native v2 receipts with fixed 9/4/4 campaign denominators and
+derives all paths from the relocated installed registry; stdout is not the
+evidence result.
 
 With compatible local public peer packages and development dependencies installed:
 

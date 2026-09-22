@@ -1,13 +1,68 @@
 """Administrative launch CLI. Never expose these flags as agent tool inputs."""
 import argparse
+import json
 import os
 import select
 import signal
+import stat
 import sys
 import threading
+from pathlib import Path
 
 from .policy import AdmissionError, Limits, RuntimeMount, ToolRequest, TrustedConfig, system_runtime_mounts
 from .sandbox import GateSession
+
+
+def _write_private_receipt(path_value, receipt) -> None:
+    path = Path(path_value)
+    if (not path.is_absolute() or ".." in path.parts
+            or path.name in ("", ".", "..")):
+        raise AdmissionError("recovery receipt path must be an absolute new file")
+    directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC
+    if hasattr(os, "O_NOFOLLOW"):
+        directory_flags |= os.O_NOFOLLOW
+    parent_fd = os.open("/", directory_flags)
+    try:
+        for part in path.parent.parts[1:]:
+            next_fd = os.open(part, directory_flags, dir_fd=parent_fd)
+            os.close(parent_fd)
+            parent_fd = next_fd
+        parent = os.fstat(parent_fd)
+        if (parent.st_uid != os.geteuid()
+                or stat.S_IMODE(parent.st_mode) != 0o700):
+            raise AdmissionError(
+                "recovery receipt directory must be owner-only mode 0700")
+        encoded = (json.dumps(receipt, sort_keys=True, separators=(",", ":"),
+                              ensure_ascii=True) + "\n").encode("ascii")
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        fd = os.open(path.name, flags, 0o600, dir_fd=parent_fd)
+        complete = False
+        try:
+            view = memoryview(encoded)
+            while view:
+                count = os.write(fd, view)
+                if count <= 0:
+                    raise OSError("short recovery receipt write")
+                view = view[count:]
+            os.fsync(fd)
+            created = os.fstat(fd)
+            if (not stat.S_ISREG(created.st_mode)
+                    or created.st_uid != os.geteuid()
+                    or stat.S_IMODE(created.st_mode) != 0o600):
+                raise AdmissionError("recovery receipt is not owner-only mode 0600")
+            complete = True
+        finally:
+            os.close(fd)
+            if not complete:
+                try:
+                    os.unlink(path.name, dir_fd=parent_fd)
+                except OSError:
+                    pass
+        os.fsync(parent_fd)
+    finally:
+        os.close(parent_fd)
 
 
 def main(argv=None) -> int:
@@ -32,13 +87,25 @@ def main(argv=None) -> int:
     mode.add_argument("--stdio", action="store_true", help="serve one owned stdin/stdout connection")
     mode.add_argument("--unix-socket", metavar="PATH", help="serve attached filesystem Unix connections")
     control.add_argument("--policy-file", required=True, help="operator-owned control policy catalog")
+    control.add_argument("--state-root", help="operator-created mode-0700 durable recovery root")
+    control.add_argument("--cgroup-parent", help="operator-delegated disposable cgroup-v2 parent")
     control.add_argument("--allowed-uid", type=int, default=os.geteuid(), help="UID admitted by an attached Unix server")
+    recovery = subparsers.add_parser("recovery", help="offline trusted recovery administration")
+    recovery.add_argument("action", choices=("inspect", "reclaim"))
+    recovery.add_argument("--state-root", required=True)
+    recovery.add_argument("--cgroup-parent")
+    recovery.add_argument("--run-ref")
+    recovery.add_argument("--envelope-sha256")
+    recovery.add_argument("--original-behavior", choices=("passed","failed","inconclusive","not_run"))
+    recovery.add_argument("--original-cleanup", choices=("confirmed","failed","unconfirmed","not_applicable"))
+    recovery.add_argument("--receipt", help="exclusive mode-0600 private recovery receipt output")
     args = parser.parse_args(argv)
     if args.operation == "control":
         try:
             from .control_server import serve_stream, serve_unix
             from .preparation import ControlBackend
-            backend = ControlBackend(args.policy_file)
+            backend = ControlBackend(args.policy_file, state_root=args.state_root,
+                                     cgroup_parent=args.cgroup_parent)
             try:
                 if args.stdio:
                     serve_stream(sys.stdin.buffer, sys.stdout.buffer, backend,
@@ -50,6 +117,28 @@ def main(argv=None) -> int:
             return 0
         except (AdmissionError, OSError, ValueError) as exc:
             print(f"mirrorgate: control admission rejected: {exc}", file=sys.stderr)
+            return 125
+    if args.operation == "recovery":
+        try:
+            from .recovery import inspect, reclaim
+            reclaim_only = (args.cgroup_parent, args.run_ref, args.envelope_sha256,
+                            args.original_behavior, args.original_cleanup,
+                            args.receipt)
+            if args.action == "inspect" and any(reclaim_only):
+                raise AdmissionError("reclaim-only arguments cannot be used with inspect")
+            original=None
+            if any((args.run_ref,args.envelope_sha256,args.original_behavior,args.original_cleanup)):
+                if not all((args.run_ref,args.envelope_sha256,args.original_behavior,args.original_cleanup)):
+                    raise AdmissionError("original run linkage requires all fields")
+                original={"runRef":{"schemaVersion":"mirrors.evidence-envelope/v1.0","runId":args.run_ref,"envelopeSha256":args.envelope_sha256,"projectionKind":"private"},"behavior":args.original_behavior,"cleanup":args.original_cleanup}
+            result = inspect(args.state_root) if args.action == "inspect" else reclaim(
+                args.state_root, cgroup_parent=args.cgroup_parent, original=original)
+            if args.receipt is not None:
+                _write_private_receipt(args.receipt, result["receipt"])
+            sys.stdout.write(json.dumps(result, sort_keys=True, separators=(",", ":")) + "\n")
+            return 0
+        except (AdmissionError, OSError, ValueError) as exc:
+            print(f"mirrorgate: recovery rejected: {exc}", file=sys.stderr)
             return 125
     command = args.command[1:] if args.command[:1] == ["--"] else args.command
     try:

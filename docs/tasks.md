@@ -78,8 +78,11 @@ check. This implementation does not automatically commit or push changes.
   CI action revisions are recorded. Workflow actionlint and shell syntax passed.
 
 Current limitations: Linux/WSL was exercised; Windows/macOS, other workers,
-aggregate cgroup quotas, crash-recovery snapshot garbage collection, hosted CI,
-and release publication were not implemented or executed. The operator must
+hosted CI, and release publication were not implemented or executed. Optional
+offline filesystem crash recovery is implemented. Aggregate cgroup-v2 source
+and mock contracts are implemented, but no operator-delegated parent was
+available for the required real enforcement tier, so aggregate limits are not
+locally qualified. The operator must
 approve public runtime trees and avoid independent writable aliases; the host
 must route all agent resource tools through the managed boundary. Native
 pre-main code is confined by launch-time isolation, not controlled by the SDK

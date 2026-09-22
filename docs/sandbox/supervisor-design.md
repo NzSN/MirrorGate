@@ -42,6 +42,12 @@ explains a single restricted command, while the
 [orchestration contract](../orchestration-control-v1.md) defines public control
 records and state transitions.
 
+Abrupt controller death is outside the implemented in-process cleanup path. The
+[crash-recovery design](recovery-design.md) specifies the optional implemented
+durable journal, offline filesystem and delegated-cgroup workflow, native
+receipt, and formal safety boundary. It is a trusted CLI operation and does not
+extend either control protocol. Process recovery remains ambiguity-only.
+
 ## Trust boundary
 
 Trusted inputs are fixed before untrusted execution:
@@ -217,11 +223,12 @@ late completions cannot acquire new authority. Exactly-once cleanup means one
 authoritative transition and stable result; individual lower-level cleanup
 attempts may be retried within their bounded owner-controlled close operation.
 
-Abrupt supervisor termination can leave snapshot directories even though
-Bubblewrap's parent-death and namespace behavior terminates restricted processes.
-The implemented backend has no restart-durable resource ledger or garbage
-collector. Operators must verify the controller has exited before removing a
-retained directory.
+When configured with `--state-root`, the supervisor durably records exact owned
+filesystem, process, retained-source, and optional cgroup resources. The trusted
+offline recovery CLI can reclaim descriptor-validated filesystem resources and
+exact children under a separately supplied delegated cgroup-v2 parent. It never
+adopts an abandoned session. Process records remain ambiguity-only, and an
+invocation without `--state-root` retains only in-process cleanup.
 
 ## Errors and disclosure
 

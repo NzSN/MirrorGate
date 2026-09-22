@@ -20,6 +20,7 @@ from .source_view import SourceViewPolicy
 
 
 CATALOG_SCHEMA = "mirrorgate.control-policy/v1"
+CGROUP_CATALOG_SCHEMA = "mirrorgate.control-policy/v3"
 CATALOG_ID = re.compile(r"[A-Za-z][A-Za-z0-9_.-]{0,127}\Z", re.ASCII)
 CONTROL_LIMIT_FIELDS = {
     "sessionWallMs", "executionWallMs", "commandCpuSeconds",
@@ -379,6 +380,7 @@ class ControlPolicy:
     runtimes: dict[str, RuntimePlan]
     limits: ControlLimits
     agent_profile_ids: tuple[str, ...] = ()
+    aggregate_limits: Any | None = None
 
     @classmethod
     def parse(cls, value: Any, *, allow_source_view: bool = False) -> "ControlPolicy":
@@ -400,6 +402,34 @@ class PolicyCatalog:
 
     @classmethod
     def from_document(cls, value: Any) -> "PolicyCatalog":
+        if type(value) is dict and value.get("schema") == CGROUP_CATALOG_SCHEMA:
+            from dataclasses import replace
+            from .agent_policy import AgentProfile
+            from .cgroup import AggregateLimits
+            raw = _object(value, {"schema", "policies", "agentProfiles"}, "policy catalog v3")
+            profiles = _unique([AgentProfile.parse(item) for item in _array(raw["agentProfiles"], "agentProfiles")], "agent profile")
+            parsed = []
+            for item in _array(raw["policies"], "policies", nonempty=True):
+                item = _object(item, {"id", "roots", "buildPlans", "tools", "runtimes",
+                                      "limits", "agentProfileIds", "aggregateLimits"}, "policy v3")
+                ids = _array(item["agentProfileIds"], "agentProfileIds")
+                if any(type(key) is not str or key not in profiles for key in ids) or len(ids) != len(set(ids)):
+                    raise AdmissionError("policy agent profile references must be unique approved IDs")
+                aggregate = _object(item["aggregateLimits"],
+                    {"pidsMax", "memoryMax", "cpuQuotaMicros", "cpuPeriodMicros"},
+                    "aggregate limits")
+                if any(type(number) is not int or number <= 0 or number > MAX_SAFE_INTEGER
+                       for number in aggregate.values()):
+                    raise AdmissionError("aggregate limits must be positive bounded integers")
+                if aggregate["cpuQuotaMicros"] > aggregate["cpuPeriodMicros"] * 1024:
+                    raise AdmissionError("aggregate CPU quota exceeds supported bound")
+                base = {key: val for key, val in item.items()
+                        if key not in ("agentProfileIds", "aggregateLimits")}
+                parsed.append(replace(ControlPolicy.parse(base, allow_source_view=True),
+                    agent_profile_ids=tuple(ids), aggregate_limits=AggregateLimits(
+                        aggregate["pidsMax"], aggregate["memoryMax"],
+                        aggregate["cpuQuotaMicros"], aggregate["cpuPeriodMicros"])))
+            return cls(_unique(parsed, "policy"), profiles)
         if type(value) is dict and value.get("schema") == "mirrorgate.control-policy/v2":
             from dataclasses import replace
             from .agent_policy import AgentProfile

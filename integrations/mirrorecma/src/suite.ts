@@ -1,5 +1,13 @@
 import * as mirrorEcma from "mirrorecma";
-import type { SuiteDefinition, SuiteRunContext, SuiteResult, AsyncAdapterFactory } from "mirrorecma";
+import type {
+  SuiteDefinition,
+  SuiteRunContext,
+  SuiteResult,
+  AsyncAdapterFactory,
+  FrameworkCatalogSelectionRef,
+  FrameworkApprovalDecision,
+  InstalledFrameworkObservation,
+} from "mirrorecma";
 import type { StartAgentOptions } from "mirrorgate/control";
 import { createSandboxCompiledModel, type SandboxPublicManifest } from "./sandbox-model.js";
 import {
@@ -33,6 +41,14 @@ export interface EvaluateSuiteOptions extends SuiteRunContext {
   readonly hostingTimeoutMs?: number;
   readonly evaluationTimeoutMs?: number;
   readonly receipt?: ReceiptWriteOptions;
+  /** Operator-selected installed distribution; pure rejection precedes Gate acquisition. */
+  readonly framework?: Readonly<{
+    catalogRaw: string;
+    selectionRef: FrameworkCatalogSelectionRef;
+    combinationId: string;
+    observed: InstalledFrameworkObservation;
+    approval?: FrameworkApprovalDecision;
+  }>;
 }
 export interface SuiteEvaluationOutcome {
   readonly schema: typeof SUITE_EVALUATION_SCHEMA;
@@ -61,6 +77,28 @@ export function evaluateSuite<Port>(suite: SuiteDefinition<Port>, options: Evalu
 export async function evaluateSuiteWithDependencies<Port>(
   input: SuiteDefinition<Port>, options: EvaluateSuiteOptions, dependencies?: Dependencies,
 ): Promise<SuiteEvaluationOutcome> {
+  if (options.framework !== undefined) {
+    if (typeof mirrorEcma.preflightFrameworkSelection !== "function")
+      throw new TypeError(
+        "evaluateSuite requires a catalog-capable MirrorECMA installation",
+      );
+    const framework = mirrorEcma.preflightFrameworkSelection(
+      options.framework.catalogRaw,
+      {
+        selectionRef: options.framework.selectionRef,
+        combinationId: options.framework.combinationId,
+        observed: options.framework.observed,
+        approval: options.framework.approval,
+      },
+    );
+    if (framework.status === "refused")
+      throw Object.assign(
+        new Error(
+          `framework selection refused at ${framework.refusal.predicate}: ${framework.refusal.detail}`,
+        ),
+        { code: framework.refusal.code },
+      );
+  }
   // Validate/snapshot inert suite inputs before acquiring any Gate resource.
   if (typeof mirrorEcma.defineSuite !== "function" || typeof mirrorEcma.runSuiteWithFactory !== "function") {
     throw new TypeError("evaluateSuite requires a suite-capable MirrorECMA installation");

@@ -26,6 +26,8 @@ from .sandbox import GateSession, SandboxProcess
 from .source_view import (SourceViewCleanupError, SourceViewMaterialization,
                           SourceViewPolicy, materialize_source_view)
 from .worker_broker import BrokerError, WorkerReservation
+from .recovery_journal import JournalError, RecoveryJournal, filesystem_identity
+from .cgroup import CgroupDelegation
 from .node_profile import copy_selected, runtime_binary, sha256
 
 
@@ -178,6 +180,12 @@ class BackendSession:
     node_runtime_lease: FrozenLease | None = None
     node_dependency_lease: FrozenLease | None = None
     preparation_identity: dict[str, Any] | None = None
+    journal_resource_id: str | None = None
+    journal_resources: list[str] = field(default_factory=list)
+    journal_process_resources: list[str] = field(default_factory=list)
+    journal_cgroup_resources: list[str] = field(default_factory=list)
+    cgroup_session: Any | None = None
+    cgroup_observations: dict[str, Any] | None = None
 
 
 def _submission(value: Any, policy: ControlPolicy, uid: int) -> tuple[str, str, Path, BuildPlan | None, bool]:
@@ -306,7 +314,9 @@ class ControlBackend:
     """Blocking backend called off the control dispatcher for long operations."""
 
     def __init__(self, catalog: PolicyCatalog | str | Path, *, attachment_timeout_ms: int = 5000,
-                 graceful_stop_ms: int = 1000, teardown_timeout_ms: int = 5000):
+                 graceful_stop_ms: int = 1000, teardown_timeout_ms: int = 5000,
+                 state_root: str | Path | None = None,
+                 cgroup_parent: str | Path | None = None):
         self.catalog = catalog if isinstance(catalog, PolicyCatalog) else PolicyCatalog.from_file(catalog)
         self.attachment_timeout_ms = attachment_timeout_ms
         self.graceful_stop_ms = graceful_stop_ms
@@ -316,18 +326,53 @@ class ControlBackend:
                             ("teardown_timeout_ms", teardown_timeout_ms)):
             if type(value) is not int or value <= 0:
                 raise AdmissionError(f"{name} must be a positive integer")
-        self.instance_id = secrets.token_hex(16)
-        self._owned = Path(tempfile.mkdtemp(prefix="mirrorgate-control-backend-"))
+        self._journal = (None if state_root is None else
+                         RecoveryJournal(state_root, role="controller"))
+        try:
+            self._cgroup = (None if cgroup_parent is None else CgroupDelegation(cgroup_parent))
+            if self._cgroup is not None:
+                self._cgroup.probe()
+        except BaseException:
+            if self._journal is not None:
+                self._journal.close()
+            raise
+        if self._journal is not None:
+            snapshot = self._journal.inspect()
+            if (snapshot.invalid
+                    or any(record["stateRoot"] != self._journal.state_root_identity
+                           or record["principalUid"] != self._journal.principal_uid
+                           or record["phase"] != "reclaimed"
+                           for record in snapshot.records)):
+                self._journal.close()
+                if self._cgroup is not None:
+                    self._cgroup.close()
+                raise JournalError("state root requires explicit offline recovery before admission")
+        self.instance_id = (secrets.token_hex(16) if self._journal is None
+                            else self._journal.controller_instance)
+        self._backend_resource_id = "backend-" + self.instance_id
+        if self._journal is None:
+            self._owned = Path(tempfile.mkdtemp(prefix="mirrorgate-control-backend-"))
+        else:
+            self._journal.claim_intent(session_id="controller",
+                                       resource_id=self._backend_resource_id,
+                                       kind="filesystem", stage="preparation")
+            self._owned = self._journal.resources_dir / ("controller-" + self.instance_id)
+            self._owned.mkdir(mode=0o700)
+            self._journal.transition(self._backend_resource_id, "durable_owned",
+                                     identity=filesystem_identity(self._journal.root, self._owned))
         # Linux sockaddr_un paths are capped at 108 bytes.  Keep the private
         # mode-0700 broker root short even when TMPDIR or session paths are long.
-        self._endpoint_root = Path(tempfile.mkdtemp(prefix="mg-worker-", dir="/tmp"))
+        self._endpoint_root = (Path(tempfile.mkdtemp(prefix="mg-worker-", dir="/tmp"))
+                               if self._journal is None else self._owned / "endpoints")
+        self._endpoint_root.mkdir(mode=0o700, exist_ok=True)
         self._endpoint_root.chmod(0o700)
         (self._owned / "snapshots").mkdir(mode=0o700, exist_ok=True)
-        self._store = FrozenStore(self._owned / "snapshots")
+        self._store = FrozenStore(self._owned / "snapshots", journal=self._journal)
         self._lock = threading.RLock()
         self._sessions: dict[BackendOwner, BackendSession | None] = {}
         self._pending_source_views: set[Path] = set()
         self._probe_result: tuple[bool, str | None] | None = None
+        self._closed = False
 
     def _remove_source_view(self, path: Path) -> None:
         try:
@@ -390,6 +435,9 @@ class ControlBackend:
             "quota.aggregate-v1": False,
         }
         reports = []
+        aggregate_available = (self._cgroup is not None and bool(policies)
+                               and all(policy.aggregate_limits is not None
+                                       for policy in policies))
         for capability_id, available in ids.items():
             scope = "session"
             if capability_id.startswith("control.local"):
@@ -409,6 +457,10 @@ class ControlBackend:
                 limits["uidProcesses"] = max(policy.limits.uid_processes for policy in self.catalog._policies.values())
             report = {"id": capability_id, "available": available,
                       "enforcedScope": scope if available else "none", "limits": limits}
+            if capability_id == "quota.aggregate-v1":
+                available = aggregate_available
+                report["available"] = available
+                report["enforcedScope"] = "session" if available else "none"
             if not available:
                 report["reason"] = ("UNSUPPORTED_AGGREGATE_QUOTAS" if capability_id == "quota.aggregate-v1"
                                     else backend_reason or "UNAVAILABLE")
@@ -482,12 +534,19 @@ class ControlBackend:
             self._sessions[owner] = None
         state: BackendSession | None = None
         allocated_leases: list[FrozenLease] = []
-        session_owned = self._owned / ("session-" + secrets.token_hex(16))
+        session_token = secrets.token_hex(16)
+        session_resource_id = "session-" + session_token
+        session_owned = self._owned / session_resource_id
+        session_claimed = False
         staged_view: Path | None = None
+        cgroup_session = None
+        cgroup_resource_id = None
         try:
             if owner.principal_uid != os.getuid():
                 raise AdmissionError("control principal UID is not admitted by this local backend")
             policy = self.catalog.select(policy_id)
+            if policy.aggregate_limits is not None and self._cgroup is None:
+                raise AdmissionError("required aggregate cgroup delegation is unavailable")
             limits = policy.limits.tighten(tightened_limits)
             if type(runtime) is not str or runtime not in policy.runtimes:
                 raise AdmissionError("requested runtime is not approved")
@@ -496,7 +555,15 @@ class ControlBackend:
             if type(manifest_bytes) is not bytes or len(manifest_bytes) > MAX_MANIFEST_BYTES:
                 raise AdmissionError("manifestJson exceeds the public manifest byte limit")
             manifest = validate_manifest(_parse_json(manifest_bytes))
+            if self._journal is not None:
+                self._journal.claim_intent(session_id=owner.session_id,
+                                           resource_id=session_resource_id,
+                                           kind="filesystem", stage="preparation")
+                session_claimed = True
             session_owned.mkdir(mode=0o700)
+            if self._journal is not None:
+                self._journal.transition(session_resource_id, "durable_owned",
+                    identity=filesystem_identity(self._journal.root, session_owned))
             source_view = None
             root_view = policy.roots[root_id].source_view
             if kind == "source" and root_view is not None:
@@ -553,6 +620,20 @@ class ControlBackend:
                             "runtimeSha256": build_plan.runtime_sha256, "dependencies": dependencies}
                 runtime_plan = replace(runtime_plan, command=(
                     "/runtime/mirrorgate-node-runtime/" + binary.name, *runtime_plan.command[1:]))
+            if policy.aggregate_limits is not None:
+                cgroup_resource_id = "cgroup-" + secrets.token_hex(16)
+                if self._journal is not None:
+                    self._journal.claim_intent(session_id=owner.session_id,
+                                               resource_id=cgroup_resource_id,
+                                               kind="cgroup", stage="authorization")
+                cgroup_session = self._cgroup.create(owner.session_id,
+                                                     policy.aggregate_limits)
+                if self._journal is not None:
+                    info = os.stat(cgroup_session.path, follow_symlinks=False)
+                    self._journal.transition(cgroup_resource_id, "durable_owned",
+                        identity={"relativePath": cgroup_session.name,
+                                  "device": info.st_dev, "inode": info.st_ino,
+                                  "mode": stat.S_IFMT(info.st_mode)})
             state = BackendSession(
                 owner=owner, policy=policy, runtime=runtime_plan, limits=limits,
                 submission_kind=kind, input_path=input_path, build_plan=build_plan,
@@ -563,6 +644,10 @@ class ControlBackend:
                 deadline=time.monotonic() + limits.session_wall_ms / 1000,
                 on_deadline=on_deadline, node_runtime_lease=runtime_lease,
                 node_dependency_lease=dependency_lease, preparation_identity=identity,
+                journal_resource_id=(session_resource_id if self._journal is not None else None),
+                cgroup_session=cgroup_session,
+                journal_cgroup_resources=([] if cgroup_resource_id is None else
+                                          [cgroup_resource_id]),
             )
             state.prepare_done.set()
             state.authoring_done.set()
@@ -575,12 +660,17 @@ class ControlBackend:
             if state is not None:
                 self.cleanup_session(state, reason="client-failure", cancel_event=threading.Event())
             else:
+                rollback_failure = None
+                if cgroup_session is not None:
+                    try:
+                        cgroup_session.cleanup(timeout=self.teardown_timeout_ms / 1000)
+                    except BaseException as cleanup:
+                        rollback_failure = cleanup
                 for lease in reversed(allocated_leases):
                     try:
                         lease.close(owner)
                     except BaseException:
                         pass
-                rollback_failure = None
                 # Only a destination this call successfully materialized is
                 # removed; a preexisting collision is never deleted.
                 if staged_view is not None:
@@ -589,7 +679,15 @@ class ControlBackend:
                     except BaseException as cleanup:
                         rollback_failure = cleanup
                 try:
+                    if self._journal is not None and session_claimed:
+                        record = self._journal.read(session_resource_id)
+                        if record["phase"] == "durable_owned":
+                            self._journal.transition(session_resource_id, "cleanup_intent")
                     remove_snapshot(session_owned)
+                    if self._journal is not None and session_claimed:
+                        record = self._journal.read(session_resource_id)
+                        if record["phase"] == "cleanup_intent":
+                            self._journal.transition(session_resource_id, "reclaimed")
                 except BaseException as cleanup:
                     rollback_failure = rollback_failure or cleanup
                 finally:
@@ -624,6 +722,74 @@ class ControlBackend:
             raise BackendError("STATE_INVALID", "cleanup", "backend session is closing")
         if time.monotonic() >= state.deadline:
             raise BackendError("DEADLINE_EXCEEDED", "cleanup", "evaluation session deadline exceeded")
+
+    def _journal_cleanup_intent(self, resource_id: str) -> None:
+        if self._journal is None:
+            return
+        self._journal.begin_cleanup(resource_id)
+
+    def _journal_cleanup_result(self, resource_id: str, *, complete: bool) -> None:
+        if self._journal is None:
+            return
+        self._journal.finish_cleanup(resource_id, complete=complete)
+
+    def _process_hooks(self, state: BackendSession, stage: str):
+        if self._journal is None and state.cgroup_session is None:
+            return None
+        resource_id = "process-" + secrets.token_hex(16)
+        claimed = False
+
+        def intent() -> None:
+            nonlocal claimed
+            if self._journal is not None:
+                self._journal.claim_intent(session_id=state.owner.session_id,
+                                           resource_id=resource_id, kind="process",
+                                           stage=stage)
+                claimed = True
+
+        def started(process) -> None:
+            if state.cgroup_session is not None:
+                state.cgroup_session.join(process.pid)
+            if self._journal is None:
+                return
+            stat_text = Path(f"/proc/{process.pid}/stat").read_text(encoding="ascii")
+            closing = stat_text.rfind(")")
+            fields = stat_text[closing + 2:].split()
+            if closing < 0 or len(fields) <= 19:
+                raise JournalError("process start identity is unavailable")
+            cgroup = Path(f"/proc/{process.pid}/cgroup").read_text(
+                encoding="ascii")[:1024].strip()
+            if not cgroup:
+                raise JournalError("process cgroup observation is unavailable")
+            identity = {"pid": process.pid, "startTime": fields[19],
+                        "bootId": self._journal.boot_id, "cgroup": cgroup}
+            self._journal.transition(resource_id, "durable_owned", identity=identity)
+            self._journal.transition(resource_id, "active")
+            state.journal_process_resources.append(resource_id)
+
+        def failed() -> None:
+            if self._journal is None or not claimed:
+                return
+            try:
+                record = self._journal.read(resource_id)
+                if record["phase"] == "allocation_intent":
+                    self._journal.transition(resource_id, "ambiguous")
+                elif record["phase"] in ("durable_owned", "active"):
+                    self._journal.transition(resource_id, "cleanup_intent")
+                    self._journal.transition(resource_id, "reclaimed")
+            except JournalError:
+                pass
+
+        def terminal(_process) -> None:
+            if self._journal is None:
+                return
+            try:
+                self._journal.begin_cleanup(resource_id)
+                self._journal.finish_cleanup(resource_id, complete=True)
+            except JournalError:
+                pass
+
+        return intent, started, failed, terminal
 
     def resource_counts(self, state: BackendSession) -> dict[str, int]:
         """Report registered physical ownership without exposing host paths."""
@@ -688,9 +854,17 @@ class ControlBackend:
         process = None
         try:
             try:
-                gate = GateSession(TrustedConfig("authoring", state.input_path,
-                                                 runtime_mounts=state.runtime.runtime_mounts,
-                                                 limits=self._sandbox_limits(state, execution=False)))
+                config = TrustedConfig("authoring", state.input_path,
+                                       runtime_mounts=state.runtime.runtime_mounts,
+                                       limits=self._sandbox_limits(state, execution=False))
+                process_hooks = self._process_hooks(state, "authoring")
+                if process_hooks is None:
+                    gate = GateSession(config)
+                else:
+                    gate = GateSession(config, _process_intent=process_hooks[0],
+                                       _process_started=process_hooks[1],
+                                       _process_failed=process_hooks[2],
+                                       _process_terminal=process_hooks[3])
                 with state.lock:
                     if state.sealed or state.closing or state.cleanup_event.is_set():
                         raise BackendError("CANCELLED", "authoring", "authoring admission was cancelled")
@@ -837,17 +1011,29 @@ class ControlBackend:
                     source.close(state.owner)
                     raise BackendError("CANCELLED", "prepare", "preparation was cancelled")
                 output = state.owned / "build-output"
+                build_resource_id = "build-" + secrets.token_hex(16)
+                if self._journal is not None:
+                    self._journal.claim_intent(session_id=state.owner.session_id,
+                                               resource_id=build_resource_id,
+                                               kind="filesystem", stage="build")
                 output.mkdir(mode=0o700)
+                if self._journal is not None:
+                    self._journal.transition(build_resource_id, "durable_owned",
+                        identity=filesystem_identity(self._journal.root, output))
+                    state.journal_resources.append(build_resource_id)
                 assert state.build_plan is not None
                 if state.build_plan.profile == "node-esm/v1":
                     copy_selected(source._mount_path(state.owner), output, state.build_plan.source_files)
                     if state.node_dependency_lease is not None:
                         shutil.copytree(state.node_dependency_lease._mount_path(state.owner), output / "node_modules")
                 else:
+                    hooks = self._process_hooks(state, "build")
+                    hook_arguments = {} if hooks is None else {"process_hooks": hooks}
                     gate = GateSession.from_frozen(
                         profile="build", lease=source, owner=state.owner,
                         runtime_mounts=state.runtime.runtime_mounts,
-                        limits=self._sandbox_limits(state, execution=False), output=output)
+                        limits=self._sandbox_limits(state, execution=False), output=output,
+                        **hook_arguments)
                     with state.lock:
                         cancelled = state.closing or state.cleanup_event.is_set()
                         if not cancelled:
@@ -935,11 +1121,14 @@ class ControlBackend:
         if shim is not None:
             readonly.append((shim, state.owner, "/runtime/mirrorgate-node-shim"))
         try:
+            hooks = self._process_hooks(state, "worker_launch")
+            hook_arguments = {} if hooks is None else {"process_hooks": hooks}
             return GateSession.from_frozen(
                 profile="execution", lease=artifact, owner=state.owner,
                 runtime_mounts=state.runtime.runtime_mounts,
                 limits=self._sandbox_limits(state, execution=True),
-                readonly_leases=tuple(readonly))
+                readonly_leases=tuple(readonly),
+                **hook_arguments)
         except (AdmissionError, OSError) as exc:
             raise BackendError("BACKEND_ADMISSION_FAILED", "authorize", str(exc)) from exc
 
@@ -1017,6 +1206,11 @@ class ControlBackend:
                     raise
 
             try:
+                worker_resource_id = "worker-" + worker_id
+                if self._journal is not None:
+                    self._journal.claim_intent(session_id=state.owner.session_id,
+                                               resource_id=worker_resource_id,
+                                               kind="filesystem", stage="worker_launch")
                 reservation = WorkerReservation(
                     owner=owner, principal_uid=owner.principal_uid,
                     session_id=owner.session_id, worker_id=worker_id,
@@ -1025,7 +1219,18 @@ class ControlBackend:
                     launch_guard=launch_guard, launch=launch, on_event=on_worker_event,
                     graceful_stop_ms=self.graceful_stop_ms,
                     teardown_timeout_ms=self.teardown_timeout_ms)
-            except (OSError, BrokerError) as exc:
+                if self._journal is not None:
+                    self._journal.transition(worker_resource_id, "durable_owned",
+                        identity=filesystem_identity(self._journal.root, reservation._directory))
+                    state.journal_resources.append(worker_resource_id)
+            except (OSError, BrokerError, JournalError) as exc:
+                if self._journal is not None:
+                    try:
+                        record = self._journal.read("worker-" + worker_id)
+                        if record["phase"] == "allocation_intent":
+                            self._journal.transition("worker-" + worker_id, "ambiguous")
+                    except BaseException:
+                        pass
                 raise BackendError("ATTACHMENT_FAILED", "attach", str(exc)) from exc
             # Register before the endpoint descriptor is returned to control.
             state.reservation = reservation
@@ -1052,7 +1257,12 @@ class ControlBackend:
                 return CleanupResult(True)
             mode = reservation.arm_closing(reason=reason)
             deadline = state.cleanup_deadline or (time.monotonic() + self.teardown_timeout_ms / 1000)
+        worker_resource_id = "worker-" + worker_id
+        if self._journal is not None:
+            self._journal_cleanup_intent(worker_resource_id)
         physical_complete, failures = reservation.close(reason=reason, cleanup_mode=mode, deadline=deadline)
+        if self._journal is not None:
+            self._journal_cleanup_result(worker_resource_id, complete=physical_complete and not failures)
         with state.lock:
             if physical_complete:
                 state.reservation = None
@@ -1126,14 +1336,51 @@ class ControlBackend:
             return CleanupResult(False, tuple(dict.fromkeys(remaining)), tuple(failures))
         if reservation is not None:
             mode = reservation.arm_closing(reason=reason)
+            worker_resource_id = "worker-" + reservation.worker_id
+            if self._journal is not None:
+                self._journal_cleanup_intent(worker_resource_id)
             physical_complete, worker_failures = reservation.close(reason=reason, cleanup_mode=mode,
                                                                    deadline=deadline)
+            if self._journal is not None:
+                self._journal_cleanup_result(worker_resource_id,
+                                             complete=physical_complete and not worker_failures)
             failures.extend(worker_failures)
             if not physical_complete:
                 remaining.append("worker")
             else:
                 with state.lock:
                     state.reservation = None
+        if self._journal is not None:
+            unconfirmed_processes = []
+            for resource_id in state.journal_process_resources:
+                try:
+                    if self._journal.read(resource_id)["phase"] != "reclaimed":
+                        unconfirmed_processes.append(resource_id)
+                except JournalError:
+                    unconfirmed_processes.append(resource_id)
+            if unconfirmed_processes:
+                failures.append("process cleanup observation is unconfirmed")
+                remaining.append("process-journal")
+                return CleanupResult(False, tuple(dict.fromkeys(remaining)),
+                                     tuple(failures))
+        if state.cgroup_session is not None:
+            try:
+                for resource_id in state.journal_cgroup_resources:
+                    self._journal_cleanup_intent(resource_id)
+                state.cgroup_observations = state.cgroup_session.cleanup(
+                    timeout=max(0, deadline - time.monotonic()))
+                for resource_id in state.journal_cgroup_resources:
+                    self._journal_cleanup_result(resource_id, complete=True)
+                state.cgroup_session = None
+            except (AdmissionError, OSError) as exc:
+                for resource_id in state.journal_cgroup_resources:
+                    try:
+                        self._journal_cleanup_result(resource_id, complete=False)
+                    except JournalError:
+                        pass
+                failures.append(f"cgroup cleanup failed: {exc}")
+                remaining.append("cgroup")
+                return CleanupResult(False, tuple(dict.fromkeys(remaining)), tuple(failures))
         for name in ("artifact_lease", "source_lease", "node_shim_lease", "manifest_lease", "node_runtime_lease", "node_dependency_lease"):
             lease = getattr(state, name)
             if lease is not None:
@@ -1159,11 +1406,35 @@ class ControlBackend:
                 except BaseException:
                     failures.append("source view cleanup failed")
                     remaining.append("source-view")
+        journal_ids = [*state.journal_resources]
+        if state.journal_resource_id is not None:
+            journal_ids.append(state.journal_resource_id)
+        if self._journal is not None:
+            for resource_id in journal_ids:
+                try:
+                    self._journal_cleanup_intent(resource_id)
+                except JournalError as exc:
+                    failures.append(f"journal cleanup intent failed: {exc}")
+                    remaining.append("journal")
         try:
             remove_snapshot(state.owned)
         except BaseException as exc:
             failures.append(f"session directory cleanup failed: {exc}")
             remaining.append("session-directory")
+            if self._journal is not None:
+                for resource_id in journal_ids:
+                    try:
+                        self._journal_cleanup_result(resource_id, complete=False)
+                    except JournalError:
+                        pass
+        else:
+            if self._journal is not None:
+                for resource_id in journal_ids:
+                    try:
+                        self._journal_cleanup_result(resource_id, complete=True)
+                    except JournalError as exc:
+                        failures.append(f"journal cleanup result failed: {exc}")
+                        remaining.append("journal")
         result = CleanupResult(not failures and not remaining,
                                tuple(dict.fromkeys(remaining)), tuple(failures))
         with state.lock:
@@ -1181,6 +1452,8 @@ class ControlBackend:
         return result
 
     def close(self) -> CleanupResult:
+        if self._closed:
+            return CleanupResult(True)
         failures: list[str] = []
         physical_remaining: list[str] = []
         with self._lock:
@@ -1210,8 +1483,41 @@ class ControlBackend:
         failures.extend(store_failures)
         if self._store.pending_removals:
             physical_remaining.append("snapshot-store")
+        journal_cleanup_ids: list[str] = []
+        if self._journal is not None:
+            for record in self._journal.inspect().records:
+                if (record["controllerInstance"] == self.instance_id
+                        and record["kind"] in ("filesystem", "retained_source")
+                        and record["phase"] in ("durable_owned", "active", "cleanup_failed")):
+                    try:
+                        self._journal_cleanup_intent(record["resourceId"])
+                        journal_cleanup_ids.append(record["resourceId"])
+                    except JournalError as exc:
+                        failures.append(f"journal cleanup intent failed: {exc}")
+                        physical_remaining.append("journal")
+                elif (record["controllerInstance"] == self.instance_id
+                      and record["kind"] in ("process", "cgroup")
+                      and record["phase"] != "reclaimed"):
+                    failures.append("process cleanup observation is unconfirmed")
+                    physical_remaining.append("process-journal")
         if not physical_remaining and not store_failures:
-            remove_snapshot(self._owned)
-            remove_snapshot(self._endpoint_root)
+            try:
+                remove_snapshot(self._owned)
+                remove_snapshot(self._endpoint_root)
+            except BaseException as exc:
+                failures.append(f"backend directory cleanup failed: {exc}")
+                physical_remaining.append("backend-directory")
+        if self._journal is not None:
+            complete = not physical_remaining and not store_failures
+            for resource_id in journal_cleanup_ids:
+                try:
+                    self._journal_cleanup_result(resource_id, complete=complete)
+                except JournalError as exc:
+                    failures.append(f"journal cleanup result failed: {exc}")
+                    physical_remaining.append("journal")
+            self._journal.close()
+        if self._cgroup is not None:
+            self._cgroup.close()
+        self._closed = True
         return CleanupResult(not failures and not physical_remaining,
                              tuple(dict.fromkeys(physical_remaining)), tuple(failures))

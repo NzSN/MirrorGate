@@ -10,7 +10,7 @@ import stat
 import tempfile
 import threading
 import time
-from typing import Hashable
+from typing import Any, Hashable
 
 from .policy import AdmissionError, checked_directory
 
@@ -83,7 +83,7 @@ class FrozenLease:
 class FrozenStore:
     """Own snapshots for one control backend and release them deterministically."""
 
-    def __init__(self, parent: str | Path | None = None):
+    def __init__(self, parent: str | Path | None = None, *, journal: Any = None):
         self._owned = (Path(tempfile.mkdtemp(prefix="mirrorgate-control-"))
                        if parent is None else checked_directory(parent))
         self._remove_owned = parent is None
@@ -91,6 +91,8 @@ class FrozenStore:
         self._condition = threading.Condition(self._lock)
         self._leases: dict[str, FrozenLease] = {}
         self._pending_removals: dict[Path, str | None] = {}
+        self._journal = journal
+        self._journal_ids: dict[Path, str] = {}
         self._inflight = 0
         self._closed = False
 
@@ -102,12 +104,29 @@ class FrozenStore:
             self._inflight += 1
         artifact = None
         fd = None
+        rollback_complete = False
+        lease_id = secrets.token_hex(16)
+        while lease_id in self._leases:
+            lease_id = secrets.token_hex(16)
+        resource_id = "snapshot-" + lease_id
+        if self._journal is not None:
+            self._journal.claim_intent(
+                session_id=getattr(owner, "session_id", "backend"),
+                resource_id=resource_id, kind="filesystem", stage="snapshot_freeze")
         try:
-            artifact = freeze_path(source, self._owned, max_files=max_files, max_bytes=max_bytes)
+            artifact = freeze_path(source, self._owned, max_files=max_files,
+                                   max_bytes=max_bytes,
+                                   destination_name="artifact-" + lease_id)
+            if self._journal is not None:
+                from .recovery_journal import filesystem_identity
+                identity = filesystem_identity(self._journal.root, artifact.path)
+                self._journal.transition(resource_id, "durable_owned", identity=identity)
+                self._journal_ids[artifact.path] = resource_id
             try:
                 fd = _open_directory(artifact.path)
             except BaseException:
                 remove_snapshot(artifact.path)
+                rollback_complete = True
                 raise
             closed_during_snapshot = False
             with self._lock:
@@ -117,9 +136,6 @@ class FrozenStore:
                     self._pending_removals.setdefault(artifact.path, None)
                     closed_during_snapshot = True
                 else:
-                    lease_id = secrets.token_hex(16)
-                    while lease_id in self._leases:
-                        lease_id = secrets.token_hex(16)
                     lease = FrozenLease(self, lease_id, owner, artifact, fd)
                     fd = None
                     self._leases[lease_id] = lease
@@ -133,8 +149,22 @@ class FrozenStore:
                 else:
                     with self._lock:
                         self._pending_removals.pop(artifact.path, None)
+                    rollback_complete = True
                 raise AdmissionError("frozen artifact store closed during snapshot")
             return lease
+        except BaseException:
+            if self._journal is not None:
+                try:
+                    record = self._journal.read(resource_id)
+                    if record["phase"] == "allocation_intent":
+                        self._journal.transition(resource_id, "ambiguous")
+                    elif record["phase"] == "durable_owned" and artifact is not None:
+                        self._journal.transition(resource_id, "cleanup_intent")
+                        if rollback_complete:
+                            self._journal.transition(resource_id, "reclaimed")
+                except BaseException:
+                    pass
+            raise
         finally:
             if fd is not None:
                 os.close(fd)
@@ -147,6 +177,11 @@ class FrozenStore:
             if owner != lease._owner:
                 raise AdmissionError("frozen artifact lease owner mismatch")
             path = lease._artifact.path
+            resource_id = self._journal_ids.get(path)
+            if self._journal is not None and resource_id is not None:
+                record = self._journal.read(resource_id)
+                if record["phase"] in ("durable_owned", "active", "cleanup_failed"):
+                    self._journal.transition(resource_id, "cleanup_intent")
             if not lease._closed:
                 lease._check(owner)
                 del self._leases[lease._lease_id]
@@ -158,10 +193,18 @@ class FrozenStore:
         try:
             remove_snapshot(lease._artifact.path)
         except BaseException as exc:
+            if self._journal is not None and resource_id is not None:
+                try:
+                    self._journal.transition(resource_id, "cleanup_failed")
+                except BaseException:
+                    pass
             with self._lock:
                 self._pending_removals[path] = str(exc)[:1024]
             raise AdmissionError("frozen artifact snapshot removal failed") from exc
         else:
+            if self._journal is not None and resource_id is not None:
+                self._journal.transition(resource_id, "reclaimed")
+                self._journal_ids.pop(path, None)
             with self._lock:
                 self._pending_removals.pop(path, None)
 
@@ -224,13 +267,21 @@ def _identity(info: os.stat_result) -> tuple:
     return (info.st_dev, info.st_ino, info.st_mode, info.st_nlink, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
 
 
-def freeze_tree(source: str | Path, owned_parent: str | Path, *, max_files: int = 10000, max_bytes: int = 512 * 1024**2) -> FrozenArtifact:
+def freeze_tree(source: str | Path, owned_parent: str | Path, *, max_files: int = 10000,
+                max_bytes: int = 512 * 1024**2,
+                destination_name: str | None = None) -> FrozenArtifact:
     """The caller owns parent; neither source nor its author can write it."""
     source_path = checked_directory(source)
     parent = checked_directory(owned_parent)
     if source_path == parent or source_path in parent.parents or parent in source_path.parents:
         raise AdmissionError("snapshot parent must be separate from the source tree")
-    destination = Path(tempfile.mkdtemp(prefix="artifact-", dir=parent))
+    if destination_name is None:
+        destination = Path(tempfile.mkdtemp(prefix="artifact-", dir=parent))
+    else:
+        if not destination_name.startswith("artifact-") or "/" in destination_name:
+            raise AdmissionError("invalid artifact destination")
+        destination = parent / destination_name
+        destination.mkdir(mode=0o700)
     entries: list[dict] = []
     total = 0
     def names_in(fd: int) -> list[str]:
@@ -330,7 +381,8 @@ def freeze_tree(source: str | Path, owned_parent: str | Path, *, max_files: int 
 
 
 def freeze_path(source: str | Path, owned_parent: str | Path, *, max_files: int = 10_000,
-                max_bytes: int = 512 * 1024**2) -> FrozenArtifact:
+                max_bytes: int = 512 * 1024**2,
+                destination_name: str | None = None) -> FrozenArtifact:
     """Freeze a regular file or directory into a directory-shaped artifact."""
     raw = Path(source)
     if raw.name in ("", ".", "..") or ".." in raw.parts:
@@ -340,7 +392,8 @@ def freeze_path(source: str | Path, owned_parent: str | Path, *, max_files: int 
     except OSError as exc:
         raise AdmissionError("artifact input is unavailable") from exc
     if stat.S_ISDIR(info.st_mode):
-        return freeze_tree(raw, owned_parent, max_files=max_files, max_bytes=max_bytes)
+        return freeze_tree(raw, owned_parent, max_files=max_files, max_bytes=max_bytes,
+                           destination_name=destination_name)
     if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
         raise AdmissionError("artifact input must be a regular unlinked file or directory")
 
@@ -380,7 +433,9 @@ def freeze_path(source: str | Path, owned_parent: str | Path, *, max_files: int 
                 os.close(item)
         finally:
             os.close(source_fd)
-        artifact = freeze_tree(staging, owned_parent, max_files=max_files, max_bytes=max_bytes)
+        artifact = freeze_tree(staging, owned_parent, max_files=max_files,
+                               max_bytes=max_bytes,
+                               destination_name=destination_name)
         return artifact
     finally:
         remove_snapshot(staging)

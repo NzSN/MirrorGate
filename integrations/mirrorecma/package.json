@@ -10,6 +10,9 @@
     "VALIDATION.md",
     "service",
     "WORKFLOW.md",
+    "scripts/application-program-gate.mjs",
+    "scripts/application-program-gate-all.mjs",
+    "scripts/application-policy.py",
     "examples/counter"
   ],
   "exports": {

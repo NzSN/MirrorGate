@@ -99,3 +99,16 @@ explicit full commit SHAs for both companion repositories; it never silently
 checks out their moving default branches. A disabled optional job is not evidence
 of evaluator integration. Release publication and successful hosted workflow
 runs must be recorded separately when they happen.
+# Recovery and aggregate limits
+
+Offline recovery is an optional trusted administrative profile using
+`mirrorgate.recovery-journal/v1`; it never resumes an abandoned session or
+changes its behavioral result. Public summaries expose only the reviewed
+cleanup scope/status and artifact references.
+
+`quota.aggregate-v1` is available only when control-policy v3 selects aggregate
+limits and the controller successfully creates, configures, empties, and removes
+a probe child below an operator-supplied cgroup-v2 parent. The legacy
+Bubblewrap/rlimit profile continues to report aggregate quotas unavailable.
+Source and mock tests do not qualify real aggregate enforcement; that tier
+requires `MIRRORGATE_REQUIRE_CGROUP=1` and `MIRRORGATE_CGROUP_PARENT`.
