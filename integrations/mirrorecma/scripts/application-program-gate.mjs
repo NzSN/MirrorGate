@@ -105,6 +105,7 @@ const hostProfile = profilePath
   ? JSON.parse(await readFile(profilePath, "utf8"))
   : undefined;
 const app = await loadApplication(folder);
+const faultTable = app.localFaults ?? app.faults;
 await checkArtifacts(
   app,
   installedRegistry
@@ -210,7 +211,7 @@ try {
     ? ["authored"]
     : [
         "correct",
-        ...Object.keys(app.faults),
+        ...Object.keys(faultTable),
         "crash",
         "hang",
         "cancel",
@@ -277,7 +278,7 @@ export async function createAdapter() {
       adapter.actions[id] = ${variant === "crash" ? "() => process.exit(17)" : "() => new Promise(() => {})"};
     }
   }
-  return instrumentApplicationAdapter(${JSON.stringify(folder)}, adapter, {enforce:${JSON.stringify(variant !== "observer-shadow-unchecked")}}).adapter;
+  return instrumentApplicationAdapter(${JSON.stringify(folder)}, adapter, {enforce:${JSON.stringify(variant !== "observer-shadow-unchecked" && variant !== "observer-invalid")}}).adapter;
 }
 `,
       );
@@ -433,11 +434,11 @@ export async function createAdapter() {
     } else if (variant !== "correct" && !controlCase && !fidelityCase) {
       const error = outcome.suiteResult.failure;
       assert.equal(error?.kind, "mismatch");
-      assert.equal(error.stateIndex, app.faults[variant].step);
-      assert.equal(error.traceIndex, app.faults[variant].trace ?? 0);
+      assert.equal(error.stateIndex, faultTable[variant].step);
+      assert.equal(error.traceIndex, faultTable[variant].trace ?? 0);
       assert.equal(
         outcome.suiteResult.trustedError?.action,
-        app.faults[variant].action,
+        faultTable[variant].action,
       );
     }
   }
@@ -565,11 +566,13 @@ export async function createAdapter() {
     );
     assert(selectedCombination, "candidate.node-gate catalog combination missing");
     catalogIdentity = {
-      selectionRef: {
-        schemaVersion: "mirrors.framework-catalog/v1",
-        selectionKind: "sha256",
-        selectionValue: frameworkCatalogDigest(catalogRaw),
-      },
+      selectionRef: installedRegistry
+        ? frameworkInput.selectionRef
+        : {
+            schemaVersion: "mirrors.framework-catalog/v1",
+            selectionKind: "sha256",
+            selectionValue: frameworkCatalogDigest(catalog),
+          },
       combinationId: selectedCombination.combinationId,
       componentRefs: selectedCombination.componentIds.map(
         (componentId) =>
@@ -674,7 +677,7 @@ export async function createAdapter() {
       })),
     };
     const byVariant = (id) => outcomes.find((item) => item.variant === id);
-    const standard = ["correct", ...Object.keys(app.faults)].map(byVariant);
+    const standard = ["correct", ...Object.keys(faultTable)].map(byVariant);
     assert(standard.every((item) => item?.fixedFixtureProbe === "enforced"));
     if (folder === "lease-service") {
       const shadowUnchecked = byVariant("observer-shadow-unchecked");
@@ -688,7 +691,7 @@ export async function createAdapter() {
       fidelity = {
         schema: "mirrorgate.observer-fidelity/v1",
         method: "actual-facts-vs-observation",
-        probeIdentity: protectedInputs.probes[0],
+        probeIdentity: { ...protectedInputs.probes[0] },
         normalCases: "passed",
         shadowControl: {
           reportedReplay: "passed",
@@ -705,7 +708,7 @@ export async function createAdapter() {
       fidelity = {
         schema: "mirrorgate.observer-fidelity/v1",
         method: "actual-facts-vs-observation",
-        probeIdentity: protectedInputs.probes[0],
+        probeIdentity: { ...protectedInputs.probes[0] },
         normalCases: "passed",
         shadowControl: {
           status: "not_applicable",
@@ -714,6 +717,7 @@ export async function createAdapter() {
       };
     }
   }
+  if (mutationCampaign) mutationCampaign = JSON.parse(JSON.stringify(mutationCampaign));
   const receipt = {
     schema: "mirrorgate.application-validation/v2",
     application: folder,
@@ -743,7 +747,11 @@ export async function createAdapter() {
             return {
               id,
               outcome: item.outcome,
-              cleanup: item.receipt.cleanup,
+              cleanup: {
+                ...item.receipt.cleanup,
+                remainingResources: [...item.receipt.cleanup.remainingResources],
+                failures: [...item.receipt.cleanup.failures],
+              },
             };
           }),
         }

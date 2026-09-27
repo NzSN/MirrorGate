@@ -19,6 +19,24 @@ test('real Counter preserves arbitrary integers, reset, and exact stable IDs', a
   await client.close(); await client.close();
 });
 
+test('observer callback failure keeps the original message and does not relabel a typed rejection', async t => {
+  const throwing = await rawWorker(t, {source: `export function createAdapter(){return {actions:{Initialize(){},Tick(){}},observe(){throw Object.assign(new Error('injected observer failure'), {code:'observer_control_failure'});}};}`});
+  await throwing.admit();
+  await throwing.request('invoke', {action: 'Initialize', inputs: {}});
+  const callback = await throwing.request('observe');
+  assert.equal(callback.error.code, 'APPLICATION');
+  assert.equal(callback.error.message, 'injected observer failure');
+  const malformed = await rawWorker(t, {source: `export function createAdapter(){return {actions:{Initialize(){},Tick(){}},observe(){return {Nope:true};}};}`});
+  await malformed.admit();
+  await malformed.request('invoke', {action: 'Initialize', inputs: {}});
+  const shape = await malformed.request('observe');
+  assert.equal(shape.error.code, 'VALUE');
+  assert.equal(shape.error.message.includes('mirrorgate.application-code='), false);
+  const {client} = await clientWorker(t, {source: `export function createAdapter(){return {actions:{Initialize(){},Tick(){}},observe(){throw Object.assign(new Error('injected observer failure'), {code:'observer_control_failure'});}};}`});
+  await client.invoke('Initialize', {});
+  await assert.rejects(client.observe(), (error) => error.code === 'APPLICATION' && error.message === 'injected observer failure' && error.cause === undefined);
+});
+
 test('faulty implementation is visible through a faithful observer', async t => {
   const {client} = await clientWorker(t, {adapter: 'runtimes/node/examples/faulty-counter.mjs'});
   await client.invoke('Initialize', {}); await client.observe();

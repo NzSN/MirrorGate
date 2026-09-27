@@ -51,7 +51,11 @@ export function serializeReceipt(value: unknown, maxBytes = 4 * 1024 * 1024): st
         if (++count > 1024 || nodes > 16_384) { output["[truncated]"] = true; break; }
         const descriptor = Object.getOwnPropertyDescriptor(item, key);
         if (descriptor === undefined) continue;
-        output[key.slice(0, 1024)] = "value" in descriptor ? visit(descriptor.value, depth + 1) : "[accessor]";
+        const measured = "value" in descriptor && (key === "durationMs" || key === "evaluationMs")
+          && typeof descriptor.value === "number" && Number.isFinite(descriptor.value)
+          ? Math.round(descriptor.value) : undefined;
+        output[key.slice(0, 1024)] = "value" in descriptor
+          ? visit(measured === undefined ? descriptor.value : measured, depth + 1) : "[accessor]";
       }
       return output;
     } catch { return "[uninspectable rejection]"; }
