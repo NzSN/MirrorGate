@@ -56,7 +56,10 @@ trace paths or `ReplayMode::Generate` with explicit trace-generation settings.
 The Rust SDK starts or attaches to Gate; the integration owns model admission,
 binding lifetime and cleanup-result composition.
 
-Inspect both `SandboxOutcome.result` and its evidence. Successful model replay
+Inspect both `SandboxOutcome.result` and its evidence. The result uses
+MirrorRust `NegotiatedError`; ordinary replay mismatches are
+`NegotiatedError::Legacy(Error::StepMismatch { .. })`. Structured registration
+and local admission failures retain separate variants and codes. Successful model replay
 does not replace the required worker/session cleanup and controller-close
 receipts. A failed model match must never authorize or acquire the worker.
 

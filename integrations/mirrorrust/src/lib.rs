@@ -71,15 +71,15 @@ pub struct SandboxEvidence {
 }
 
 pub struct SandboxOutcome {
-    pub result: Result<(), mirrorrust::Error>,
+    pub result: Result<(), mirrorrust::NegotiatedError>,
     pub evidence: SandboxEvidence,
 }
 
 pub type WorkerBindingFactory =
     Box<dyn FnMut(ManagedWorker, &ApalacheConfig) -> Result<LocalBinding, BindingError>>;
 
-fn local_error(code: impl Into<String>, message: impl Into<String>) -> mirrorrust::Error {
-    mirrorrust::Error::ModelInterface {
+fn local_error(code: impl Into<String>, message: impl Into<String>) -> mirrorrust::NegotiatedError {
+    mirrorrust::NegotiatedError::ModelInterface {
         code: code.into(),
         message: message.into(),
     }
@@ -104,7 +104,7 @@ fn gate_binding_error(error: GateError) -> BindingError {
     BindingError::new(gate_code(&error), error.to_string())
 }
 
-fn gate_model_error(error: GateError) -> mirrorrust::Error {
+fn gate_model_error(error: GateError) -> mirrorrust::NegotiatedError {
     local_error(gate_code(&error), error.to_string())
 }
 
@@ -180,8 +180,8 @@ fn note_cleanup_error(evidence: &Arc<Mutex<SandboxEvidence>>, detail: impl Into<
 
 fn cleanup_failure(
     evidence: &Arc<Mutex<SandboxEvidence>>,
-    error: mirrorrust::Error,
-) -> mirrorrust::Error {
+    error: mirrorrust::NegotiatedError,
+) -> mirrorrust::NegotiatedError {
     note_cleanup_error(evidence, error.to_string());
     error
 }
@@ -205,21 +205,27 @@ fn observe_binding_disposal(
 
 fn record_cleanup(
     session: &Session,
-    primary: &Result<(), mirrorrust::Error>,
+    primary: &Result<(), mirrorrust::NegotiatedError>,
     evidence: &Arc<Mutex<SandboxEvidence>>,
-) -> Result<(), mirrorrust::Error> {
+) -> Result<(), mirrorrust::NegotiatedError> {
     let summary = OutcomeSummary {
         status: match primary {
             Ok(()) => OutcomeStatus::Passed,
-            Err(mirrorrust::Error::StepMismatch { .. }) => OutcomeStatus::Mismatch,
+            Err(mirrorrust::NegotiatedError::Legacy(mirrorrust::Error::StepMismatch {
+                ..
+            })) => OutcomeStatus::Mismatch,
             Err(_) => OutcomeStatus::Failed,
         },
         failure_family: primary.as_ref().err().map(|error| match error {
-            mirrorrust::Error::StepMismatch { .. } => "step_mismatch".into(),
-            mirrorrust::Error::Registration { .. } | mirrorrust::Error::RegisterFailed(_) => {
+            mirrorrust::NegotiatedError::Legacy(mirrorrust::Error::StepMismatch { .. }) => {
+                "step_mismatch".into()
+            }
+            mirrorrust::NegotiatedError::Registration { .. }
+            | mirrorrust::NegotiatedError::Legacy(mirrorrust::Error::RegisterFailed(_)) => {
                 "registration".into()
             }
-            mirrorrust::Error::ProtocolError(_) | mirrorrust::Error::UnexpectedMessage(_) => {
+            mirrorrust::NegotiatedError::Legacy(mirrorrust::Error::ProtocolError(_))
+            | mirrorrust::NegotiatedError::Legacy(mirrorrust::Error::UnexpectedMessage(_)) => {
                 "protocol".into()
             }
             _ => "model_interface".into(),
@@ -632,10 +638,10 @@ mod tests {
         let first = cleanup_failure(&evidence, local_error("cleanup.one", "first"));
         let second = cleanup_failure(&evidence, local_error("cleanup.two", "second"));
         assert!(
-            matches!(first, mirrorrust::Error::ModelInterface { ref code, .. } if code == "cleanup.one")
+            matches!(first, mirrorrust::NegotiatedError::ModelInterface { ref code, .. } if code == "cleanup.one")
         );
         assert!(
-            matches!(second, mirrorrust::Error::ModelInterface { ref code, .. } if code == "cleanup.two")
+            matches!(second, mirrorrust::NegotiatedError::ModelInterface { ref code, .. } if code == "cleanup.two")
         );
         let observed = evidence.lock().unwrap();
         assert!(observed.cleanup_error.contains("first"));

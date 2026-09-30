@@ -18,7 +18,7 @@ source hashes and reproducibility manifests are in the
 
 The Counter adapter is handwritten acceptance code with identity
 `mirrorrust-counter-fixture-v1`, using the reviewed compiler-produced Counter
-contract/digest. It is not the planned general `mirrorrust-v1` emitter. The generic
+contract/digest. It is distinct from the implemented general `mirrorrust-v1` emitter owned by Mirrors. The generic
 evaluator composition seam accepts a caller-supplied worker binding and trace
 configuration. The current facade starts its model peer over local stdio; native
 Gate control is local stdio or filesystem Unix, not remote Gate control.
@@ -92,3 +92,21 @@ records their hashes and the commands/identities needed to interpret the results
 The reference matrix completed its 42 rows before a tool-version probe timed out
 in the manifest postlude. QA completed that manifest separately using retained
 row evidence; the initial shell invocation is not reported as a zero-exit run.
+
+## 2026-10-01 compatibility migration
+
+The current integration uses MirrorRust's separate `NegotiatedError` for model
+admission and replay. Structured server and local admission errors retain their
+codes; `Legacy(Error)` preserves protocol, transport, and ordinary mismatch
+failures. The legacy MirrorRust `Error` enum is restored to its pre-negotiation
+variant set. The coordinated consumers compiled and passed local validation.
+The dated acceptance table above remains historical evidence; current migration
+validation and any backend limitations are recorded in
+[the MirrorRust execution record](../../MirrorRust/Plans/client-guide-conformance-fixes.md).
+
+Migration acceptance: MirrorRust 70/70 including real stdio/TCP/mTLS, generated
+Rust harness 7/7, Gate integration 2/2, and required real Rust evaluator matrix
+20/20 with confirmed cleanup. The broad Gate regression exited zero; three
+aggregate-cgroup cases skipped because no operator-delegated parent was configured.
+The compiler-owned Rust output passed freshness checking. These results do not
+claim aggregate-quota enforcement, package publication, or release qualification.

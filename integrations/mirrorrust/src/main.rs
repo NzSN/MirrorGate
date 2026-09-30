@@ -2,7 +2,7 @@ use mirrorgate_mirrorrust_integration::{
     COUNTER_CONTRACT, COUNTER_FIXTURE_TARGET, COUNTER_SEMANTIC_DIGEST, ControlMode, ReplayMode,
     SandboxPlan, run_counter_sandboxed,
 };
-use mirrorrust::{ApalacheConfig, Error, GeneratedModelInterface, as_int};
+use mirrorrust::{ApalacheConfig, Error, GeneratedModelInterface, NegotiatedError, as_int};
 use serde_json::json;
 use std::env;
 use std::fs;
@@ -104,7 +104,7 @@ fn run() -> Result<(), String> {
     };
     if sut == "wrong-digest" {
         require(
-            matches!(&outcome.result, Err(Error::Registration { code, .. }) if code == "interface_digest_mismatch"),
+            matches!(&outcome.result, Err(NegotiatedError::Registration { code, .. }) if code == "interface_digest_mismatch"),
             format!(
                 "wrong digest was not rejected by Mirrors: {:?}",
                 outcome.result
@@ -139,9 +139,9 @@ fn run() -> Result<(), String> {
     }
     if sut == "faulty" {
         match &outcome.result {
-            Err(Error::StepMismatch {
+            Err(NegotiatedError::Legacy(Error::StepMismatch {
                 expected, actual, ..
-            }) => {
+            })) => {
                 let expected = expected
                     .get("count")
                     .and_then(as_int)
