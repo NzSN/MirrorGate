@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import socket
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -41,6 +42,24 @@ class IsolationTests(unittest.TestCase):
     def run_python(self, code, *, profile="execution", limits=None, output=None):
         with GateSession(TrustedConfig(profile, self.source, output=output, limits=limits or Limits())) as gate:
             return gate.run(ToolRequest(("/usr/bin/python3", "-c", code)))
+
+    def test_launch_helper_preserves_supervisor_package_tree(self):
+        supervisor = self.root / "supervisor"
+        package = supervisor / "mirrorgate"
+        shutil.copytree(Path(__file__).resolve().parents[1] / "supervisor/mirrorgate",
+                        package, ignore=shutil.ignore_patterns("__pycache__"))
+        script = """
+import sys
+from mirrorgate import GateSession, ToolRequest, TrustedConfig
+with GateSession(TrustedConfig('execution', sys.argv[1])) as gate:
+    result = gate.run(ToolRequest(('/usr/bin/true',)))
+assert result.returncode == 0, result.stderr
+"""
+        result = subprocess.run([sys.executable, "-B", "-c", script, str(self.source)],
+                                env={**os.environ, "PYTHONPATH": str(supervisor)},
+                                cwd=self.root, capture_output=True, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(list(package.rglob("*.pyc")), [])
 
     def test_private_files_environment_processes_and_inherited_fds_denied(self):
         private = self.root / "private-oracle"

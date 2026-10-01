@@ -320,7 +320,7 @@ class GateSession:
         # The helper sets limits in a fresh Python process; no unsafe preexec_fn
         # is run in the multithreaded evaluator.
         barrier_read, barrier_write = os.pipe2(os.O_CLOEXEC)
-        argv = [sys.executable, "-P", "-m", "mirrorgate.sandbox", "--child",
+        argv = [sys.executable, "-B", "-P", "-m", "mirrorgate.sandbox", "--child",
                 json.dumps(asdict(self.config.limits)), "--barrier-fd",
                 str(barrier_read), *self.command(request)]
         package_root = str(Path(__file__).resolve().parents[1])
