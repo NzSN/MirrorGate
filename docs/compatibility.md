@@ -5,6 +5,12 @@ Status: destination-integrated development profiles with passed local gates,
 commands and versions, including passed real outside-Codex MCP acceptance. No
 published release, hosted CI success or remote service deployment is claimed.
 
+The newer [October 7 framework qualification](../../Mirrors/Plans/q3-published-roadmap-2026-10-07.md)
+adds a frozen WSL2/Windows-oracle installed/evidence scope, not a new hosting or
+OS-backend profile. The original managed-hosting versions and dated results below
+remain their own compatibility record. Broader M4 recovery/enforcement and package
+publication are separate from the completed selected M5 profile.
+
 [Managed hosting control v2](agent-hosting-control-v2.md) adds fresh-agent
 start/status/cancel while retaining the v1 bootstrap envelope and frozen v1
 records. Node and C++ clients select v2 explicitly. The Rust client supports v1

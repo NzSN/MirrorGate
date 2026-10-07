@@ -26,6 +26,13 @@ distinguishes those results from earlier workflow gates, lists skipped tiers,
 and records retained evidence and temporary-log availability. Publication and
 human usability remain separate claims.
 
+The [October 7 named framework profile](../../Mirrors/Plans/q3-published-roadmap-2026-10-07.md)
+passes installed Gate/D and application campaigns plus ownership-safe recovery of
+prepared filesystem resources. Broader M4 remains separate; no active-process
+restart, native Ubuntu, new platform backend or package-release claim is inferred.
+[Current framework status](../../Mirrors/Docs/current-status.md) separates the
+frozen profile, source declarations and older managed-hosting records.
+
 ## Implementation and acceptance status
 
 | Layer | Status / authoritative reference |

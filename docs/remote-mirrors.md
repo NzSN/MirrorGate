@@ -1,5 +1,12 @@
 # Restricted evaluation with a remote Mirrors server
 
+[Current framework status](../../Mirrors/Docs/current-status.md) records the
+October 7 owned Windows oracle topology and exact scoped qualification. Verify
+fresh endpoint/process/runtime/certificate identities before use; this guide is
+not a live-health statement. The configured certificate record was valid through
+2026-10-08T02:47:53Z. No local Apalache/TLC runs on the selected coordinator;
+Windows service-manager and broader M4/Gate platform acceptance stay separate.
+
 The transport-factory examples below describe the Node/MirrorECMA integration.
 The current Rust evaluator facade starts Mirrors over local stdio; its base
 model client separately supports TCP/mTLS. See [language support](client-language-support.md).

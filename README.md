@@ -14,6 +14,14 @@ evaluation environment, using a language-neutral port protocol.
 
 ## Status
 
+The [October 7 M5 record](../Mirrors/Plans/q3-published-roadmap-2026-10-07.md)
+qualifies the frozen WSL2/Windows-oracle combination, including installed Gate
+campaigns and prepared-filesystem recovery. Broader M4 aggregate enforcement and
+active-process recovery remain a separate user-selected track. Windows model
+checking is not a Windows Gate backend; hosted CI/package publication and new
+platform acceptance remain separate. [Framework status](../Mirrors/Docs/current-status.md)
+links the current source and exact evidence boundaries.
+
 The initial Linux/Bubblewrap profile is implemented, with a Python supervisor,
 Node and Rust workers, strict public-port RPC, and trusted Node, C++ and Rust
 control clients. The Rust SDK implements control-v1 and worker-v1 only; it does
