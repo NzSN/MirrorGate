@@ -4,7 +4,10 @@
 October 7 owned Windows oracle topology and exact scoped qualification. Verify
 fresh endpoint/process/runtime/certificate identities before use; this guide is
 not a live-health statement. The configured certificate record was valid through
-2026-10-08T02:47:53Z. No local Apalache/TLC runs on the selected coordinator;
+2026-10-08T02:47:53Z. That recorded validity window has ended as of the
+October 9 documentation review; no live service or renewed credential was
+inspected. Reconcile current validity, trust and pin identities before remote
+work using the linked server guide. No local Apalache/TLC runs on the selected coordinator;
 Windows service-manager and broader M4/Gate platform acceptance stay separate.
 
 The transport-factory examples below describe the Node/MirrorECMA integration.
