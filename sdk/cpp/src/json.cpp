@@ -266,12 +266,78 @@ void normalize_integral_numbers(Json& value) {
 
 SdkError::SdkError(std::string code_value, std::string message)
     : std::runtime_error(std::move(message)), code(std::move(code_value)),
-      stage(), operation_id(0) {}
+      stage(), operation_id(0), origin(FailureOrigin::sdk) {}
 
 SdkError::SdkError(std::string code_value, std::string stage_value,
-                   std::string message, std::uint64_t operation)
+                   std::string message, std::uint64_t operation,
+                   FailureOrigin origin_value)
     : std::runtime_error(std::move(message)), code(std::move(code_value)),
-      stage(std::move(stage_value)), operation_id(operation) {}
+      stage(std::move(stage_value)), operation_id(operation), origin(origin_value) {}
+
+const char* failure_origin_name(FailureOrigin origin) noexcept {
+  switch (origin) {
+    case FailureOrigin::sdk: return "sdk";
+    case FailureOrigin::control_reply: return "control_reply";
+    case FailureOrigin::worker_application: return "worker_application";
+  }
+  return "sdk";
+}
+
+const char* failure_family_name(FailureFamily family) noexcept {
+  switch (family) {
+    case FailureFamily::control_compatibility: return "control_compatibility";
+    case FailureFamily::control_transport: return "control_transport";
+    case FailureFamily::control_protocol: return "control_protocol";
+    case FailureFamily::admission: return "admission";
+    case FailureFamily::build: return "build";
+    case FailureFamily::negotiation: return "negotiation";
+    case FailureFamily::worker_transport: return "worker_transport";
+    case FailureFamily::worker_protocol: return "worker_protocol";
+    case FailureFamily::worker_application: return "worker_application";
+    case FailureFamily::timeout: return "timeout";
+    case FailureFamily::cancellation: return "cancellation";
+    case FailureFamily::cleanup: return "cleanup";
+    case FailureFamily::configuration: return "configuration";
+  }
+  return "configuration";
+}
+
+FailureSnapshot snapshot_failure(const SdkError& error,
+                                 const std::string& operation) {
+  FailureFamily family = FailureFamily::configuration;
+  const bool worker = operation == "attach" || operation == "hello" ||
+      operation == "create" || operation == "invoke" || operation == "observe";
+  if (error.origin == FailureOrigin::worker_application)
+    family = FailureFamily::worker_application;
+  else if (error.code == "CANCELLED") family = FailureFamily::cancellation;
+  else if (error.code == "DEADLINE_EXCEEDED") family = FailureFamily::timeout;
+  else if (operation == "dispose" || operation == "cleanup" ||
+           error.code == "CLEANUP_FAILED") family = FailureFamily::cleanup;
+  else if (error.code == "VERSION_UNSUPPORTED" || error.code == "CAPABILITY_UNAVAILABLE")
+    family = FailureFamily::control_compatibility;
+  else if (error.origin == FailureOrigin::control_reply) {
+    if (error.code == "BUILD_FAILED" || error.stage == "build")
+      family = FailureFamily::build;
+    else if (error.code == "NEGOTIATION_ATTESTATION_INVALID")
+      family = FailureFamily::negotiation;
+    else if (error.code == "WORKER_EXITED") family = FailureFamily::worker_transport;
+    else if (error.code == "WORKER_PROTOCOL_FAILED") family = FailureFamily::worker_protocol;
+    else family = FailureFamily::admission;
+  } else if (error.code == "CONTROL_TRANSPORT" || error.code == "CONTROL_DISCONNECTED")
+    family = worker ? FailureFamily::worker_transport : FailureFamily::control_transport;
+  else if (worker) family = FailureFamily::worker_protocol;
+  else if (error.code == "CONTROL_MALFORMED" || error.code == "SCHEMA" ||
+           error.code == "FRAME" || error.code == "LIMIT")
+    family = FailureFamily::control_protocol;
+  std::string message(error.what());
+  if (message.size() > 1024) {
+    std::size_t end = 1024;
+    while (end > 0 && (static_cast<unsigned char>(message[end]) & 0xc0U) == 0x80U) --end;
+    message.resize(end);
+  }
+  return {error.origin, family, error.code, error.stage, error.operation_id,
+          operation, std::move(message)};
+}
 
 Json parse_strict_json(const std::string& input, JsonLimits limits) {
   if (input.size() > limits.bytes) bad("LIMIT", "JSON byte limit exceeded");

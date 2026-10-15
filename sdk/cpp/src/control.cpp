@@ -71,7 +71,7 @@ ServerError decode_control_error(const Json& error) {
     throw SdkError("CONTROL_MALFORMED", "Unknown control error family or stage");
   const std::uint64_t operation_id = error.contains("operationId")
       ? require_safe_id(error, "operationId") : 0;
-  return ServerError(code, stage, message, operation_id);
+  return ServerError(code, stage, message, operation_id, FailureOrigin::control_reply);
 }
 
 void require_version_one(const Json& value) {

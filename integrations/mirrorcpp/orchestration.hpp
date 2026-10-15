@@ -44,9 +44,14 @@ struct SandboxEvidence {
   bool control_shutdown_confirmed = false;
   std::string control_process_state = "unconfirmed";
   std::string cleanup_error;
+  std::shared_ptr<const FailureSnapshot> primary_failure;
+  std::shared_ptr<const FailureSnapshot> cleanup_failure;
 };
 
 namespace detail {
+// Restore only normalized local adapter failures, preserving Mirrors outcomes.
+mirrorcpp::Result<void> restore_gate_failure(
+    mirrorcpp::Result<void> primary, SandboxEvidence& evidence);
 mirrorcpp::Result<void> apply_control_close_receipt(
     mirrorcpp::Result<void> primary,
     const TransportCloseResult& receipt,

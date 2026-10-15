@@ -1,0 +1,128 @@
+#!/usr/bin/env bash
+# Real Gate + checked trace replay. No model checker or model service is started.
+set -euo pipefail
+gate_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+mirrorcpp_root="${MIRRORCPP_ROOT:?MIRRORCPP_ROOT must name a prepared MirrorCPP checkout}"
+mirrors_root="${MIRRORS_ROOT:?MIRRORS_ROOT must name a prepared Mirrors checkout}"
+mirror_bin="${MIRROR_BIN:-$mirrors_root/.lake/build/bin/mirror}"
+dependency_cache="${MIRRORCPP_DEPENDENCY_CACHE:-$mirrorcpp_root/build/_deps}"
+build_jobs="${MIRRORGATE_CPP_BUILD_JOBS:-2}"
+evidence_file="${MIRRORGATE_CPP_FAILURE_EVIDENCE:-$gate_root/.work/cpp-failure-evidence.jsonl}"
+[[ -x "$mirror_bin" ]] || { echo "missing Mirrors binary: $mirror_bin" >&2; exit 1; }
+[[ "$build_jobs" =~ ^[1-9][0-9]*$ ]] || { echo 'invalid C++ build parallelism' >&2; exit 1; }
+scratch="$(mktemp -d)"
+daemon_pid=""
+cleanup() {
+  if [[ -n "$daemon_pid" ]]; then
+    kill "$daemon_pid" 2>/dev/null || true
+    wait "$daemon_pid" 2>/dev/null || true
+  fi
+  rm -rf "$scratch"
+}
+trap cleanup EXIT
+mkdir -p "$scratch/submissions/observer" "$(dirname "$evidence_file")"
+cp "$gate_root/runtimes/node/examples/counter.mjs" "$scratch/submissions/observer/adapter.mjs"
+cpp_build_dir="${MIRRORGATE_CPP_FAILURE_BUILD_DIR:-$scratch/build}"
+[[ "$cpp_build_dir" == /* ]] || { echo 'C++ build directory must be absolute' >&2; exit 1; }
+if [[ -f "$cpp_build_dir/CMakeCache.txt" ]]; then
+  cache_source=""
+  cache_compiler=""
+  while IFS= read -r line; do
+    case "$line" in
+      CMAKE_HOME_DIRECTORY:INTERNAL=*) cache_source="${line#*=}" ;;
+      CMAKE_CXX_COMPILER:FILEPATH=*) cache_compiler="${line#*=}" ;;
+    esac
+  done < "$cpp_build_dir/CMakeCache.txt"
+  [[ "$cache_source" == "$gate_root/integrations/mirrorcpp" ]] || {
+    echo 'C++ build cache belongs to a different source directory' >&2; exit 1;
+  }
+  if [[ -n "${CXX:-}" ]]; then
+    requested_compiler="$(command -v "$CXX")"
+    [[ "$(realpath "$cache_compiler")" == "$(realpath "$requested_compiler")" ]] || {
+      echo 'C++ build cache belongs to a different compiler' >&2; exit 1;
+    }
+  fi
+fi
+cmake -S "$gate_root/integrations/mirrorcpp" -B "$cpp_build_dir" \
+  -DMIRRORCPP_ROOT="$mirrorcpp_root" -DMIRRORCPP_DEPENDENCY_CACHE="$dependency_cache" \
+  -DBUILD_TESTING=OFF
+cmake --build "$cpp_build_dir" --parallel "$build_jobs"
+"$cpp_build_dir/mirrorgate_mirrorcpp_receipt_tests"
+driver="$cpp_build_dir/mirrorgate_mirrorcpp_counter"
+manifest="$gate_root/conformance/manifests/counter.json"
+trace="$gate_root/conformance/control-v1/counter.itf.json"
+spec="$mirrors_root/specs/Counter.tla"
+: > "$evidence_file"
+for mode in owned attached; do
+  for scenario in correct faulty wrong-digest error-adapter error-cleanup error-build error-admission \
+      error-invoke-protocol error-observe-protocol \
+      error-invoke-transport error-observe-transport \
+      error-invoke-application error-observe-application \
+      error-invoke-timeout error-observe-timeout \
+      error-invoke-cancel error-observe-cancel \
+      error-spoof-admission error-spoof-deadline; do
+    # This denial removes a previously admitted mount after daemon policy load.
+    # The attached sibling retains its own pinned mount and live worker.
+    [[ "$mode" == owned && "$scenario" == error-admission ]] && continue
+    relative="$mode-$scenario"
+    mkdir "$scratch/submissions/$relative"
+    case "$scenario" in
+      correct|wrong-digest)
+        cp "$gate_root/runtimes/node/examples/counter.mjs" "$scratch/submissions/$relative/adapter.mjs" ;;
+      faulty)
+        cp "$gate_root/runtimes/node/examples/faulty-counter.mjs" "$scratch/submissions/$relative/adapter.mjs"
+        cp "$gate_root/runtimes/node/examples/counter.mjs" "$scratch/submissions/$relative/counter.mjs" ;;
+      *)
+        cp "$gate_root/conformance/control-v1/failure-counter.mjs" "$scratch/submissions/$relative/adapter.mjs"
+        printf 'export default "%s";\n' "$scenario" > "$scratch/submissions/$relative/scenario.mjs" ;;
+    esac
+    policy="$scratch/$relative.policy.json"
+    policy_id="accept.cpp.failure"
+    python3 "$gate_root/tests/control_policy_fixture.py" "$policy" "$scratch/submissions" \
+      --policy-id "$policy_id" --adapter-id mirrorgate/node-v1 --target-profile mirrorcpp-v1 \
+      --runtime node --artifact-entry adapter.mjs >/dev/null
+    unset MIRRORGATE_CPP_DENIED_MOUNT
+    if [[ "$scenario" == error-build || "$scenario" == error-admission ]]; then
+      denied_mount="$scratch/denied-mount"
+      if [[ "$scenario" == error-admission ]]; then mkdir "$denied_mount"; fi
+      python3 - "$policy" "$scenario" "$denied_mount" <<'PY'
+import json, sys
+from pathlib import Path
+path = Path(sys.argv[1])
+document = json.loads(path.read_text())
+policy = document['policies'][0]
+if sys.argv[2] == 'error-build':
+    policy['buildPlans'][0]['command'] = ['/usr/bin/false']
+else:
+    policy['runtimes'][0]['runtimeMounts'].append({
+        'source': sys.argv[3], 'destination': '/runtime/denied'})
+path.write_text(json.dumps(document) + '\n')
+PY
+      if [[ "$scenario" == error-admission ]]; then
+        export MIRRORGATE_CPP_DENIED_MOUNT="$denied_mount"
+      fi
+    fi
+    endpoint="$gate_root/bin/mirrorgate"
+    if [[ "$mode" == attached ]]; then
+      socket_dir="$scratch/socket-$scenario"
+      mkdir "$socket_dir"
+      chmod 0700 "$socket_dir"
+      endpoint="$socket_dir/control.sock"
+      "$gate_root/bin/mirrorgate" control --unix-socket "$endpoint" --policy-file "$policy" &
+      daemon_pid=$!
+      for _ in {1..200}; do [[ -S "$endpoint" ]] && break; sleep 0.01; done
+      [[ -S "$endpoint" ]] || { echo 'attached Gate did not create its socket' >&2; exit 1; }
+      export MIRRORGATE_CPP_SECOND_SESSION=1
+    else
+      unset MIRRORGATE_CPP_SECOND_SESSION
+    fi
+    timeout 45s "$driver" "$mode" "$endpoint" "$policy" "$policy_id" "$manifest" \
+      "$relative" node-v1 "$mirror_bin" "$spec" "$trace" "$scenario" | tee -a "$evidence_file"
+    if [[ "$mode" == attached ]]; then
+      kill -0 "$daemon_pid"
+      kill "$daemon_pid"
+      wait "$daemon_pid" 2>/dev/null || true
+      daemon_pid=""
+    fi
+  done
+done

@@ -77,6 +77,19 @@ report a closed connection with `process_state = not_owned`. Custom transports
 that do not implement a receipt remain `unconfirmed`, so orchestration facades
 can fail closed without replacing an earlier model or application failure.
 
+`ManagedWorker::failure_snapshot()` returns an owned optional immutable copy of
+the first body failure, including public invoke/observe preconditions and input
+encoding. `cleanup_failure_snapshot()` independently retains the first close
+failure. The snapshot contains SDK-assigned origin/family, exact code and stage,
+operation ID, trusted local operation and at most 1024 diagnostic bytes. An
+empty original stage stays empty; local operation context does not replace it.
+Validated supervisor errors have `control_reply` origin. A worker reply's code
+has `worker_application` origin even when it spells `BACKEND_ADMISSION_FAILED`,
+`CANCELLED` or `DEADLINE_EXCEEDED`. Only a timeout raised by the frame read itself
+is retried. Snapshots do not add another cleanup owner or retry mutations.
+These source APIs and object layouts require rebuilding SDK consumers; this is
+not a binary compatibility guarantee for existing compiled clients.
+
 The C++ API uses nlohmann/json exactly 3.11.3 under its MIT license. It is a
 build dependency, not a MirrorCPP or runtime dependency. CMake first accepts an
 exact installed package. An offline toolchain may instead set

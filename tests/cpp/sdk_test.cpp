@@ -385,6 +385,16 @@ struct FakeWorkerServer {
           const auto op = request.at("op").get<std::string>();
           if (op == "hello") write_json_fd(fd, {{"v",1},{"id",request.at("id")},{"ok",true},
             {"result",{{"interfaceDigest",request.at("interfaceDigest")},{"runtime",request.at("runtime")}}}});
+          else if ((op == "invoke" && (mode == 3 || mode == 4)) ||
+                   (op == "observe" && mode == 5)) {
+            write_json_fd(fd, {{"v",1},{"id",request.at("id")},{"ok",false},
+                {"error",{{"code",mode == 3 ? "BACKEND_ADMISSION_FAILED" : "DEADLINE_EXCEEDED"},
+                           {"message","same human text"}}}});
+            break;
+          } else if ((op == "invoke" && mode == 6) || (op == "observe" && mode == 7)) {
+            write_json_fd(fd, {{"v",1},{"id",999},{"ok",true},{"result",nullptr}});
+            break;
+          } else if (op == "invoke" && mode == 8) break;
           else if (op == "invoke" && mode == 2) {
             Json cancel = Json::parse(read_line_fd(fd)); ++port_requests;
             if (cancel.at("op") != "cancel" || cancel.at("requestId") != request.at("id"))
@@ -463,10 +473,17 @@ void test_managed_worker_negative_paths(const std::string& manifest_path) {
     bool rejected = false;
     try { (void)worker->observe(); } catch (const SdkError& error) { rejected = error.code == "VALUE"; }
     require(rejected, "malformed native observation was accepted");
+    const auto original_failure = worker->failure_snapshot();
+    require(original_failure && original_failure->code == "VALUE" &&
+        original_failure->stage.empty() && original_failure->operation == "observe" &&
+        original_failure->family == mirrorgate::FailureFamily::worker_protocol,
+        "observation failure snapshot lost its SDK context");
     const int after_failure = server.port_requests.load();
     try { worker->invoke("Initialize", {}); } catch (const SdkError&) {}
     require(server.port_requests.load() == after_failure, "managed dispatch continued after malformed observation");
     worker->close("worker-failure");
+    require(worker->failure_snapshot()->code == original_failure->code,
+            "cleanup replaced first worker failure");
     require(server.ok, "fake malformed worker server failed");
   }
   {
@@ -477,6 +494,9 @@ void test_managed_worker_negative_paths(const std::string& manifest_path) {
     bool rejected = false;
     try { worker->invoke("Initialize", {}, aborted); } catch (const SdkError& error) { rejected = error.code == "CANCELLED"; }
     require(rejected, "pre-aborted call did not cancel locally");
+    require(worker->failure_snapshot() && worker->failure_snapshot()->family ==
+                mirrorgate::FailureFamily::cancellation,
+            "pre-dispatch failure was not recorded");
     worker->invoke("Initialize", {});
     require(worker->observe().at("Count").text == "0", "worker unusable after pre-dispatch cancellation");
     // hello/create plus exactly one initializer and observation: the aborted call consumed no ID or frame.
@@ -498,6 +518,63 @@ void test_managed_worker_negative_paths(const std::string& manifest_path) {
             "worker cancellation did not use invoke-then-cancel with correlated responses");
     worker->close("user-cancel");
     require(server.ok, "fake cancellation worker server failed");
+  }
+  for (int mode : {3, 4, 5, 6, 7, 8}) {
+    FakeWorkerServer server; server.start(mode);
+    std::unique_ptr<mirrorgate::ControlClient> control; mirrorgate::Session session;
+    auto worker = attach_fake_worker(server, manifest_path, control, session, true);
+    const auto began = std::chrono::steady_clock::now();
+    bool rejected = false;
+    try {
+      worker->invoke("Initialize", {});
+      if (mode == 5 || mode == 7) (void)worker->observe();
+    } catch (const SdkError&) { rejected = true; }
+    require(rejected, "negative worker reply succeeded");
+    auto failure = worker->failure_snapshot();
+    require(failure && failure->stage.empty() && failure->operation_id == 0 &&
+        failure->operation == ((mode == 5 || mode == 7) ? "observe" : "invoke"),
+        "worker snapshot changed exact stage/ID or local operation");
+    if (mode <= 5) {
+      require(failure->origin == mirrorgate::FailureOrigin::worker_application &&
+          failure->family == mirrorgate::FailureFamily::worker_application &&
+          failure->message == "same human text",
+          "worker-controlled code acquired trusted authority");
+      require(std::chrono::steady_clock::now() - began < std::chrono::seconds(2),
+          "worker-authored deadline code was retried as a transport timeout");
+    } else require(failure->family == (mode == 8
+        ? mirrorgate::FailureFamily::worker_transport
+        : mirrorgate::FailureFamily::worker_protocol),
+        "worker transport/protocol family collapsed");
+    worker->close("client-failure");
+    worker.reset();
+    require(!failure->message.empty(), "owned snapshot died with the worker");
+  }
+  for (const bool encode_failure : {false, true}) {
+    FakeWorkerServer server; server.start(0);
+    std::unique_ptr<mirrorgate::ControlClient> control; mirrorgate::Session session;
+    auto worker = attach_fake_worker(server, manifest_path, control, session, false);
+    bool rejected = false;
+    try {
+      if (encode_failure) worker->invoke("Initialize", {{"unexpected", NativeValue::null()}});
+      else (void)worker->observe();
+    } catch (const SdkError&) { rejected = true; }
+    const auto failure = worker->failure_snapshot();
+    require(rejected && failure && failure->code == (encode_failure ? "VALUE" : "LIFECYCLE") &&
+        failure->operation == (encode_failure ? "invoke" : "observe") &&
+        server.port_requests.load() == 2,
+        "precondition or encoding failure was not captured before dispatch");
+    worker->close();
+  }
+  {
+    FakeWorkerServer server; server.start(2);
+    std::unique_ptr<mirrorgate::ControlClient> control; mirrorgate::Session session;
+    auto worker = attach_fake_worker(server, manifest_path, control, session, true);
+    mirrorgate::CallOptions options; options.timeout = std::chrono::milliseconds(15);
+    try { worker->invoke("Initialize", {}, options); } catch (const SdkError&) {}
+    require(worker->failure_snapshot() && worker->failure_snapshot()->origin ==
+        mirrorgate::FailureOrigin::sdk && worker->failure_snapshot()->family ==
+        mirrorgate::FailureFamily::timeout, "SDK deadline lost its trusted origin");
+    worker->close("deadline");
   }
 }
 

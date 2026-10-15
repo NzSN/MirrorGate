@@ -6,6 +6,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -75,6 +76,8 @@ class ManagedWorker {
               const CallOptions& options = {});
   NativeFields observe(const CallOptions& options = {});
   void close(const std::string& reason = "normal");
+  std::optional<FailureSnapshot> failure_snapshot() const { return primary_failure_; }
+  std::optional<FailureSnapshot> cleanup_failure_snapshot() const { return cleanup_failure_; }
 
  private:
   enum class State { await_hello, await_create, need_initializer, need_observe,
@@ -88,7 +91,8 @@ class ManagedWorker {
   void validate_worker_response(const Json& response, std::uint64_t id);
   void cancel_pending(std::uint64_t id, const std::string& reason);
   void start_gate_cleanup(const std::string& reason);
-  void remember_primary(const SdkError& error);
+  void remember_primary(const SdkError& error, const std::string& operation);
+  void remember_cleanup(const SdkError& error);
 
   Session session_;
   WorkerDescriptor descriptor_;
@@ -99,6 +103,9 @@ class ManagedWorker {
   std::uint64_t next_id_ = 1;
   bool released_ = false;
   std::unique_ptr<SdkError> primary_error_;
+  std::optional<FailureSnapshot> primary_failure_;
+  std::optional<FailureSnapshot> cleanup_failure_;
+  bool closing_ = false;
   std::unique_ptr<Operation> session_cleanup_;
 };
 

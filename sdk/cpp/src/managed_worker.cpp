@@ -393,12 +393,12 @@ std::unique_ptr<ManagedWorker> ManagedWorker::attach(Session& session,
     worker->state_ = State::need_initializer;
     return worker;
   } catch (const SdkError& error) {
-    worker->remember_primary(error);
+    worker->remember_primary(error, "attach");
     try { worker->close("client-failure"); } catch (...) {}
     throw;
   } catch (const std::exception& error) {
     SdkError wrapped("WORKER_PROTOCOL_FAILED", error.what());
-    worker->remember_primary(wrapped);
+    worker->remember_primary(wrapped, "attach");
     try { worker->close("client-failure"); } catch (...) {}
     throw wrapped;
   }
@@ -420,26 +420,33 @@ void ManagedWorker::attachment_handshake() {
 }
 
 Json ManagedWorker::call(const std::string& operation, Json fields, const CallOptions& options) {
-  if (state_ == State::poisoned || state_ == State::closed) throw SdkError("LIFECYCLE", "Worker is unavailable");
-  if (options.timeout.count() < 1) throw SdkError("SCHEMA", "Invalid worker deadline");
-  if (options.cancelled && options.cancelled())
-    throw SdkError("CANCELLED", "Worker operation cancelled before dispatch");
-  if (next_id_ > 9007199254740991ULL) throw SdkError("LIMIT", "Worker request ID exhausted");
-  const std::uint64_t id = next_id_++;
-  Json request = {{"v", 1}, {"id", id}, {"op", operation}};
-  for (auto it = fields.begin(); it != fields.end(); ++it) request[it.key()] = it.value();
-  const std::string encoded = encode_strict_json(request, kWorkerLimits);
+  bool dispatched = false;
   try {
+    if (state_ == State::poisoned || state_ == State::closed) throw SdkError("LIFECYCLE", "Worker is unavailable");
+    if (options.timeout.count() < 1) throw SdkError("SCHEMA", "Invalid worker deadline");
+    if (options.cancelled && options.cancelled())
+      throw SdkError("CANCELLED", "Worker operation cancelled before dispatch");
+    if (next_id_ > 9007199254740991ULL) throw SdkError("LIMIT", "Worker request ID exhausted");
+    const std::uint64_t id = next_id_++;
+    Json request = {{"v", 1}, {"id", id}, {"op", operation}};
+    for (auto it = fields.begin(); it != fields.end(); ++it) request[it.key()] = it.value();
+    const std::string encoded = encode_strict_json(request, kWorkerLimits);
+    dispatched = true;
     transport_->write_frame(encoded, kWorkerLimits.bytes);
     return receive_response(id, operation, options);
   } catch (const SdkError& error) {
-    state_ = State::poisoned; remember_primary(error);
-    if (error.code != "CANCELLED" && error.code != "DEADLINE_EXCEEDED")
+    remember_primary(error, operation);
+    if (!dispatched) throw;
+    state_ = State::poisoned;
+    if (error.origin == FailureOrigin::worker_application ||
+        (error.code != "CANCELLED" && error.code != "DEADLINE_EXCEEDED"))
       start_gate_cleanup("client-failure");
     throw;
   } catch (const std::exception& error) {
+    if (!dispatched) throw;
     SdkError wrapped("WORKER_PROTOCOL_FAILED", error.what());
-    state_ = State::poisoned; remember_primary(wrapped);
+    remember_primary(wrapped, operation);
+    state_ = State::poisoned;
     start_gate_cleanup("client-failure");
     throw wrapped;
   }
@@ -452,22 +459,28 @@ Json ManagedWorker::receive_response(std::uint64_t id, const std::string& operat
     if (options.cancelled && options.cancelled()) { cancel_pending(id, "user-cancel"); throw SdkError("CANCELLED", "Worker operation cancelled"); }
     const auto now = std::chrono::steady_clock::now();
     if (now >= deadline) { cancel_pending(id, "deadline"); throw SdkError("DEADLINE_EXCEEDED", "Worker operation deadline exceeded"); }
+    std::string frame;
     try {
-      Json response = parse_strict_json(transport_->read_frame(kWorkerLimits.bytes,
-          std::min(std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now), std::chrono::milliseconds(10))), kWorkerLimits);
-      validate_worker_response(response, id);
-      if (!response.at("ok").get<bool>()) {
-        const Json& error = response.at("error");
-        throw SdkError(error.at("code").get<std::string>(), error.at("message").get<std::string>());
-      }
-      Json result = response.at("result");
-      if (operation != "hello" && operation != "observe" && !result.is_null())
-        throw SdkError("SCHEMA", "Worker result must be null");
-      return result;
+      frame = transport_->read_frame(kWorkerLimits.bytes,
+          std::min(std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now), std::chrono::milliseconds(10)));
     } catch (const SdkError& error) {
-      if (error.code == "DEADLINE_EXCEEDED") continue;
+      // Only a timeout from this read is retryable. A worker can choose the
+      // identical code in a valid application-error reply.
+      if (error.origin == FailureOrigin::sdk && error.code == "DEADLINE_EXCEEDED") continue;
       throw;
     }
+    Json response = parse_strict_json(frame, kWorkerLimits);
+    validate_worker_response(response, id);
+    if (!response.at("ok").get<bool>()) {
+      const Json& error = response.at("error");
+      throw SdkError(error.at("code").get<std::string>(), "",
+          error.at("message").get<std::string>(), 0,
+          FailureOrigin::worker_application);
+    }
+    Json result = response.at("result");
+    if (operation != "hello" && operation != "observe" && !result.is_null())
+      throw SdkError("SCHEMA", "Worker result must be null");
+    return result;
   }
 }
 
@@ -514,34 +527,56 @@ void ManagedWorker::start_gate_cleanup(const std::string& reason) {
 
 void ManagedWorker::invoke(const std::string& operation, const NativeFields& inputs,
                            const CallOptions& options) {
-  if ((state_ != State::need_initializer && state_ != State::ready_action) ||
-      (state_ == State::need_initializer && !manifest_.is_initializer(operation)))
-    throw SdkError("LIFECYCLE", "Worker invocation is not valid in this state");
-  Json result = call("invoke", {{"action", operation}, {"inputs", manifest_.encode_inputs(operation, inputs)}}, options);
-  if (!result.is_null()) throw SdkError("SCHEMA", "Invoke result must be null");
-  state_ = State::need_observe;
+  try {
+    if ((state_ != State::need_initializer && state_ != State::ready_action) ||
+        (state_ == State::need_initializer && !manifest_.is_initializer(operation)))
+      throw SdkError("LIFECYCLE", "Worker invocation is not valid in this state");
+    Json result = call("invoke", {{"action", operation}, {"inputs", manifest_.encode_inputs(operation, inputs)}}, options);
+    if (!result.is_null()) throw SdkError("SCHEMA", "Invoke result must be null");
+    state_ = State::need_observe;
+  } catch (const SdkError& error) {
+    remember_primary(error, "invoke");
+    throw;
+  }
 }
 
 NativeFields ManagedWorker::observe(const CallOptions& options) {
-  if (state_ != State::need_observe) throw SdkError("LIFECYCLE", "Observation requires a completed invocation");
-  Json result = call("observe", Json::object(), options);
-  NativeFields observations;
-  try { observations = manifest_.decode_observations(result); }
-  catch (const SdkError& error) {
-    state_ = State::poisoned; remember_primary(error);
-    start_gate_cleanup("worker-failure");
+  try {
+    if (state_ != State::need_observe) throw SdkError("LIFECYCLE", "Observation requires a completed invocation");
+    Json result = call("observe", Json::object(), options);
+    NativeFields observations;
+    try { observations = manifest_.decode_observations(result); }
+    catch (const SdkError& error) {
+      state_ = State::poisoned; remember_primary(error, "observe");
+      start_gate_cleanup("worker-failure");
+      throw;
+    }
+    state_ = State::ready_action; return observations;
+  } catch (const SdkError& error) {
+    remember_primary(error, "observe");
     throw;
   }
-  state_ = State::ready_action; return observations;
 }
 
-void ManagedWorker::remember_primary(const SdkError& error) {
-  if (!primary_error_) primary_error_.reset(new SdkError(error.code, error.stage, error.what(), error.operation_id));
+void ManagedWorker::remember_primary(const SdkError& error,
+                                     const std::string& operation) {
+  if (closing_) { remember_cleanup(error); return; }
+  if (!primary_error_) primary_error_.reset(new SdkError(error));
+  if (!primary_failure_) primary_failure_.emplace(snapshot_failure(error, operation));
+}
+
+void ManagedWorker::remember_cleanup(const SdkError& error) {
+  if (!cleanup_failure_) cleanup_failure_.emplace(snapshot_failure(error, "dispose"));
 }
 
 void ManagedWorker::close(const std::string& reason) {
   if (released_) return;
   released_ = true;
+  closing_ = true;
+  struct ClosingGuard {
+    bool& closing;
+    ~ClosingGuard() { closing = false; }
+  } closing_guard{closing_};
   std::string cleanup_mode;
   const bool had_primary = static_cast<bool>(primary_error_);
   std::unique_ptr<SdkError> cleanup_error;
@@ -549,7 +584,7 @@ void ManagedWorker::close(const std::string& reason) {
     state_ = State::closed;
     if (transport_) transport_->close();
     try { session_cleanup_->wait(); }
-    catch (const SdkError&) { if (!had_primary) throw; }
+    catch (const SdkError& error) { remember_cleanup(error); if (!had_primary) throw; }
     return;
   }
   try {
@@ -564,15 +599,16 @@ void ManagedWorker::close(const std::string& reason) {
           if (!result.is_null()) throw SdkError("SCHEMA", "Dispose result must be null");
         }
       } catch (const SdkError& error) {
-        cleanup_error.reset(new SdkError(error.code, error.stage, error.what(), error.operation_id));
-        remember_primary(error);
+        cleanup_error.reset(new SdkError(error));
+        remember_cleanup(error);
       }
     }
     state_ = State::closed;
     if (transport_) transport_->close();
     release.wait();
     if (cleanup_error && !had_primary) throw *cleanup_error;
-  } catch (const SdkError&) {
+  } catch (const SdkError& error) {
+    remember_cleanup(error);
     state_ = State::closed;
     if (transport_) transport_->close();
     if (!had_primary) throw;
