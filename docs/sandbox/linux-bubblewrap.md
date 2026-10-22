@@ -10,6 +10,13 @@ administrative API and CLI belong to the trusted evaluator. An agent tool gatewa
 exposes only `ToolRequest(argv, cwd)` on a preconfigured `GateSession`; it never
 exposes session construction, CLI flags, runtime mounts, or policy replacement.
 
+The disposable GitHub Ubuntu runner explicitly admits `/usr/bin/bwrap` through
+an application-specific AppArmor profile before probing user/network namespaces.
+The CI-only helper does not disable AppArmor or alter global namespace sysctls.
+The backend still disables nested user namespaces, drops worker capabilities,
+and requires real private-data/mount/cleanup denial tests. This is operator
+host preparation for that runner, not an additional production deployment claim.
+
 ## Profiles and trust
 
 | Profile | Submission mount | Writable resources |

@@ -37,8 +37,9 @@
     ],
     "evidence": {
       "url": "https://github.com/NzSN/Mirrors/blob/main/Plans/version-migration-2026-10-22/evidence/gate-composition.json",
-      "sha256": "2b177f3c8c4c4bd26f18e306e37f46530811542f03926cc863cb05279d009597"
-    }
+      "sha256": "5df0e1b902c935a9712517d828f616ca28533f04b7dd31a4e2ecd76bfedec36d"
+    },
+    "sourceTreeSha256": "01190e27e905dd9f12779f34327fc0b0c2b3b75f92bc4f264d9251e8e40ff9d9"
   },
   "limits": [
     "Live model generation/validation/exploration not exercised in this campaign.",
