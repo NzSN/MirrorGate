@@ -1,5 +1,7 @@
 # MirrorGate
 
+[Product versions and compatibility](docs/versioning.md).
+
 Choose evaluator SDK and worker language independently using the
 [client-language support guide](docs/client-language-support.md).
 

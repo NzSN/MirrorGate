@@ -44,7 +44,7 @@
   },
   "peerDependencies": {
     "mirrorgate": "0.1.0",
-    "mirrorecma": "^1.0.0 || ^2.0.0"
+    "mirrorecma": "^0.1.0 || ^1.0.0 || ^2.0.0"
   },
   "devDependencies": {
     "typescript": "6.0.3",
