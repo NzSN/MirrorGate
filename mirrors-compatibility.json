@@ -1,0 +1,51 @@
+{
+  "schema": "mirrors.component-compatibility/v1",
+  "component": {
+    "repository": "NzSN/MirrorGate",
+    "version": "0.1.0",
+    "releaseTag": "v0.1.0",
+    "sourceParent": "5055d91757a071467b96d38a16ffece1265c3138"
+  },
+  "server": {
+    "repository": "NzSN/Mirrors",
+    "tag": "v0.1.0",
+    "revision": "ea8091c0c723f3f561044a5c1efb91d12e7aaf5f",
+    "formerTag": "v0.0.3.3",
+    "embeddedVersion": "v0.0.3.2",
+    "binarySha256": "53bd92420e101567a6a76b0e80fc9786b6496e3af98a32f2ee2f5ea35de65082"
+  },
+  "compatibility": {
+    "status": "verified-for-declared-profile",
+    "nodeEcmaInstalledSuite": "two repeated packed/relocated source-hidden actual-worker evaluations",
+    "nativeEvaluators": [
+      "MirrorCPP",
+      "MirrorRust"
+    ],
+    "controllerModes": [
+      "owned",
+      "attached"
+    ],
+    "workerRuntimes": [
+      "node-v1",
+      "rust-v1"
+    ],
+    "suppliedTraceCompositionRows": 24,
+    "controls": [
+      "actual-state-mismatch",
+      "wrong-digest-before-binding-or-worker-acquisition",
+      "physical-cleanup-confirmed"
+    ],
+    "evidence": {
+      "url": "https://github.com/NzSN/Mirrors/blob/main/Plans/version-migration-2026-10-22/evidence/gate-composition.json",
+      "sha256": "2b177f3c8c4c4bd26f18e306e37f46530811542f03926cc863cb05279d009597"
+    }
+  },
+  "limits": [
+    "Live model generation/validation/exploration not exercised in this campaign.",
+    "Exact model-interface digests remain required.",
+    "The frozen compiler has no Lean emitter or later async-ECMA/Rust v2 emitters.",
+    "Lean has no Gate evaluator SDK; C++/Lean workers and Windows/macOS isolation are not implied.",
+    "Real operator-delegated aggregate-cgroup tests were not selected; 3 Gate tests skipped.",
+    "Local controller Python was 3.14.4; this campaign is not a new qualification of the separate frozen Python3.12 distribution profile."
+  ]
+}
