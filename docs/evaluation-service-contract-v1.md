@@ -28,6 +28,41 @@ prevents old start keys from silently launching replacement evaluations. The
 proxy never refreshes an epoch or retries a start automatically after transport
 failure. Creating a new evaluation after restart is an explicit caller decision.
 
+### Persistent private-evaluation attempts
+
+Trusted service configuration may set `requirePersistentBudget: true`. In that
+mode every binding must include `attemptBudget: {directory, authorRef,
+corpusDigest, maxAttempts}`. The author reference must equal the configured
+caller ID. Use the same private directory for every implementation/token/service
+instance evaluating that author against the same immutable private corpus.
+The existing directory must be serving-UID-owned with mode `0700`; every path
+component is opened without following symlinks. Linux descriptor-relative
+operations pin the directory. A versioned mode-0600 record fixes author, corpus
+and the positive attempt limit (at most 4,096); incompatible reuse is refused.
+
+Before accepting any new start, the service exclusively creates and synchronizes
+one mode-0600 spent marker and synchronizes its parent directory. Atomic marker
+creation arbitrates between service processes/replicas. Restart does not remove
+markers. A crash may consume an attempt before the callback runs; failures,
+cancellations and lost replies never refund it. Existing start-key retries within
+an epoch do not charge again. Exhaustion returns `LIMIT_EXCEEDED`; corrupt,
+replaced or unavailable storage fails closed before callback invocation. A
+partially initialized budget record requires operator repair, not an automatic
+reset. The runtime never creates a new budget directory or reclaims spent slots.
+
+The operator owns corpus revisions and budget-directory custody. Deleting the
+directory or configuring an alternate directory is an explicit new authorization,
+not crash recovery. Direct library callers bypassing this service need an
+equivalent persistent budget owner. No software limit conceals the Boolean
+information in an allowed verdict.
+
+In private-budget mode optional public fields are stripped by default even when
+the registered callback returns them. A binding's trusted `disclosure` may
+explicitly enable `counts`, `implementationIdentity` or `failureStage`.
+An explicit `disclosure: {}` also applies this restriction outside private mode;
+legacy services with neither option retain their callback's approved projection.
+No model diagnostics or administrative handles are added to the public schema.
+
 ## Closed envelopes and operations
 
 A request is exactly `{v: 1, requestId, op, args}`. `requestId`, `serviceEpoch`,

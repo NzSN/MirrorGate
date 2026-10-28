@@ -12,7 +12,7 @@ from typing import Any, Callable
 
 from .recovery_journal import (JournalBusy, JournalError, RecoveryJournal,
                                checked_relative_path, inspect_records,
-                               validate_state_root)
+                               validate_state_root, GROUP_SCHEMA, cgroup_identity_digest)
 from .cgroup import AggregateLimits, CgroupDelegation, CgroupSession
 from .policy import AdmissionError
 from .recovery_receipt import create_receipt
@@ -123,7 +123,7 @@ def reclaim(state_root: str | Path, *, fault: Callable[[str], None] | None = Non
             raise JournalError("invalid journal records require manual intervention")
         plans: list[tuple[int, str, dict[str, Any]]] = []
         protected: list[tuple[str | None, dict[str, Any]]] = []
-        for record in snapshot.records:
+        for record in sorted(snapshot.records, key=lambda item: item["kind"] != "cgroup"):
             if not _record_belongs_to_root(journal, record):
                 results.append(_mark_ambiguous(journal, record, attempt_id,
                                                "foreign_root_or_uid"))
@@ -131,6 +131,14 @@ def reclaim(state_root: str | Path, *, fault: Callable[[str], None] | None = Non
                 continue
             item = _classify(record)
             if item.disposition in ("reclaimed", "retained"):
+                if item.disposition == "reclaimed" and record["kind"] == "cgroup":
+                    evidence = record.get("cleanupEvidence")
+                    if evidence is not None:
+                        cgroup_observations[record["resourceId"]] = {"resourceId":record["resourceId"], **evidence}
+                    else:
+                        results.append(RecoveryItem(record["resourceId"], record["sessionId"], "cgroup",
+                            record["phase"], "unconfirmed", "terminal_counters_not_retained").public())
+                        continue
                 results.append(item.public())
                 if item.disposition == "retained":
                     protected.append((_record_path(record), record))
@@ -140,13 +148,19 @@ def reclaim(state_root: str | Path, *, fault: Callable[[str], None] | None = Non
                 protected.append((_record_path(record), record))
                 continue
             if record["kind"] not in ("filesystem", "retained_source"):
+                if record["kind"] == "process" and record["schema"] == GROUP_SCHEMA:
+                    result = _reclaim_group_process(journal, record, attempt_id)
+                    results.append(result)
+                    if result["disposition"] != "reclaimed":
+                        protected.append((None, journal.read(record["resourceId"])))
+                    continue
                 if record["kind"] == "cgroup" and delegation is not None:
                     result, observation = _reclaim_cgroup(
                         journal, delegation, record, attempt_id)
                     results.append(result)
                     cgroup_observations[record["resourceId"]] = observation
                     if result["disposition"] != "reclaimed":
-                        protected.append((None, record))
+                        protected.append((None, journal.read(record["resourceId"])))
                     continue
                 if record["kind"] == "cgroup" and record["phase"] == "cleanup_failed":
                     results.append(RecoveryItem(
@@ -168,21 +182,28 @@ def reclaim(state_root: str | Path, *, fault: Callable[[str], None] | None = Non
             plans.append((len(PurePosixPath(logical).parts), logical, record))
         safe_plans = []
         for depth, relative, record in plans:
-            blocked = False
+            blockers = []
             candidate = PurePosixPath(relative)
             for protected_path, protected_record in protected:
                 if protected_path is not None:
                     child = PurePosixPath(protected_path)
                     if candidate == child or candidate in child.parents:
-                        blocked = True
+                        blockers.append(protected_record)
                 elif (record["sessionId"] == protected_record["sessionId"]
                       or record["sessionId"] == "controller"):
-                    blocked = True
-                if blocked:
-                    break
-            if blocked:
-                results.append(_mark_ambiguous(journal, record, attempt_id,
-                                               "protected_descendant"))
+                    blockers.append(protected_record)
+            if blockers:
+                # A known cleanup failure is retryable. Do not turn the enclosing
+                # filesystem claim into terminal ambiguity merely because this
+                # attempt could not yet quiesce its registered child.
+                if all(item["phase"] == "cleanup_failed" for item in blockers):
+                    journal.begin_cleanup(record["resourceId"])
+                    failed = journal.finish_cleanup(record["resourceId"], complete=False)
+                    results.append(RecoveryItem(record["resourceId"], record["sessionId"], record["kind"],
+                        failed["phase"], "failed", "descendant_cleanup_failed").public())
+                else:
+                    results.append(_mark_ambiguous(journal, record, attempt_id,
+                                                   "protected_descendant"))
             else:
                 safe_plans.append((depth, record))
         # Remove only the outermost fully validated claim. Its exact tree contains
@@ -267,7 +288,9 @@ def reclaim(state_root: str | Path, *, fault: Callable[[str], None] | None = Non
         cgroup_observations=[cgroup_observations[item["resourceId"]]
                              for item in receipt_results if item["kind"] == "cgroup"],
         controller_instance=journal.controller_instance, boot_id=journal.boot_id,
-        principal_uid=journal.principal_uid)
+        principal_uid=journal.principal_uid,
+        journal_schema=GROUP_SCHEMA if any(record["schema"] == GROUP_SCHEMA for record in snapshot.records)
+            else "mirrorgate.recovery-journal/v1")
     return {"schema": "mirrorgate.recovery-result/v1", "attemptId": attempt_id,
             "results": public,
             "counts": _counts(public, []), "receipt": receipt}
@@ -289,6 +312,12 @@ def _reclaim_cgroup(journal: RecoveryJournal, delegation: CgroupDelegation,
         return result, {"resourceId": record["resourceId"],
                         "settings": settings, "counters": counters}
     try:
+        if record["bootId"] != journal.boot_id:
+            raise JournalError("cgroup belongs to another boot")
+        if record["schema"] == GROUP_SCHEMA:
+            parent = os.fstat(delegation.fd)
+            if identity.get("delegation") != {"device": parent.st_dev, "inode": parent.st_ino, "uid": parent.st_uid}:
+                raise JournalError("cgroup delegation changed")
         fd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC
                      | os.O_NOFOLLOW, dir_fd=delegation.fd)
         info = os.fstat(fd)
@@ -301,6 +330,22 @@ def _reclaim_cgroup(journal: RecoveryJournal, delegation: CgroupDelegation,
         session = CgroupSession(delegation, name, record["sessionId"],
                                 AggregateLimits(1, 1, 1, 1000), fd)
         settings = session.settings()
+    except FileNotFoundError:
+        if session is not None and session.fd >= 0:
+            os.close(session.fd)
+            session.fd = -1
+        elif fd >= 0:
+            os.close(fd)
+        # Absence alone is never evidence. Only an already durable, exact-owned
+        # empty-subtree observation followed by removal intent permits this cut.
+        evidence = record.get("cleanupEvidence")
+        if record["schema"] == GROUP_SCHEMA and record["phase"] in ("cleanup_intent", "cleanup_failed") and evidence is not None:
+            journal.begin_cleanup(record["resourceId"])
+            terminal = journal.transition(record["resourceId"], "reclaimed",
+                observation={"attemptId":attempt_id, "status":"recovered", "reasonCode":"owned_cgroup_empty"})
+            return RecoveryItem(record["resourceId"], record["sessionId"], "cgroup", terminal["phase"], "reclaimed").public(), {"resourceId":record["resourceId"], **evidence}
+        result = _mark_ambiguous(journal, record, attempt_id, "cgroup_identity_unconfirmed")
+        return result, {"resourceId":record["resourceId"], "settings":settings, "counters":counters}
     except (OSError, JournalError, AdmissionError):
         if session is not None and session.fd >= 0:
             os.close(session.fd)
@@ -314,7 +359,10 @@ def _reclaim_cgroup(journal: RecoveryJournal, delegation: CgroupDelegation,
     try:
         journal.begin_cleanup(record["resourceId"])
         try:
-            counters = session.cleanup()
+            def persist_empty(observed):
+                journal.transition(record["resourceId"], "cleanup_intent",
+                    cleanup_evidence={"settings":settings, "counters":observed})
+            counters = session.cleanup(**({"before_remove":persist_empty} if record["schema"] == GROUP_SCHEMA else {}))
         except (OSError, AdmissionError):
             try:
                 counters = session.observe()
@@ -326,7 +374,11 @@ def _reclaim_cgroup(journal: RecoveryJournal, delegation: CgroupDelegation,
                 failed["phase"], "failed", "cgroup_cleanup_failed").public()
             return result, {"resourceId": record["resourceId"],
                             "settings": settings, "counters": counters}
-        terminal = journal.finish_cleanup(record["resourceId"], complete=True)
+        terminal = journal.transition(record["resourceId"], "reclaimed",
+            observation={"attemptId": attempt_id, "status": "recovered",
+                         "reasonCode": "owned_cgroup_empty"},
+            **({"cleanup_evidence":{"settings":settings, "counters":counters}}
+               if record["schema"] == GROUP_SCHEMA else {}))
         result = RecoveryItem(
             terminal["resourceId"], terminal["sessionId"], terminal["kind"],
             terminal["phase"], "reclaimed").public()
@@ -336,6 +388,38 @@ def _reclaim_cgroup(journal: RecoveryJournal, delegation: CgroupDelegation,
         if session.fd >= 0:
             os.close(session.fd)
             session.fd = -1
+
+
+def _reclaim_group_process(journal: RecoveryJournal, record: dict[str, Any],
+                           attempt_id: str) -> dict[str, Any]:
+    identity = record["identity"]
+    try:
+        group = journal.read(identity["cgroupResourceId"])
+        same_owner = all(record[key] == group[key] for key in
+                         ("stateRoot", "sessionId", "controllerInstance", "bootId", "principalUid"))
+        if (record["phase"] == "allocation_intent" or "pid" not in identity
+                or record["bootId"] != journal.boot_id or identity.get("bootId") != journal.boot_id
+                or group["kind"] != "cgroup" or group["schema"] != GROUP_SCHEMA or not same_owner
+                or identity["cgroupIdentityDigest"] != cgroup_identity_digest(group["identity"])):
+            raise JournalError("process group ownership is unconfirmed")
+    except (JournalError, KeyError, OSError):
+        return _mark_ambiguous(journal, record, attempt_id, "process_group_link_unconfirmed")
+    if group["phase"] == "ambiguous":
+        return _mark_ambiguous(journal, record, attempt_id, "covering_cgroup_ambiguous")
+    if group["phase"] != "reclaimed":
+        journal.begin_cleanup(record["resourceId"])
+        failed = journal.finish_cleanup(record["resourceId"], complete=False)
+        return RecoveryItem(record["resourceId"], record["sessionId"], "process",
+                            failed["phase"], "failed", "covering_cgroup_not_reclaimed").public()
+    if not any(item["status"] == "recovered" and item["reasonCode"] == "owned_cgroup_empty"
+               for item in group["observations"]):
+        return _mark_ambiguous(journal, record, attempt_id, "covering_cgroup_empty_unconfirmed")
+    journal.begin_cleanup(record["resourceId"])
+    terminal = journal.transition(record["resourceId"], "reclaimed",
+        observation={"attemptId": attempt_id, "status": "recovered",
+                     "reasonCode": "covered_by_owned_cgroup"})
+    return RecoveryItem(record["resourceId"], record["sessionId"], "process",
+                        terminal["phase"], "reclaimed").public()
 
 
 def _mark_ambiguous(journal: RecoveryJournal, record: dict[str, Any],

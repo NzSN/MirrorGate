@@ -5,6 +5,8 @@ export interface EvaluationBinding {
   readonly implementationRef:string;
   /** Fixed trusted callback: invoke evaluateImplementation(approvedPlan, {signal}). */
   readonly evaluate:(options:Readonly<{signal:AbortSignal}>)=>Promise<EvaluationOutcome>;
+  readonly attemptBudget?:Readonly<{directory:string;authorRef:string;corpusDigest:string;maxAttempts:number}>;
+  readonly disclosure?:Readonly<{counts?:boolean;implementationIdentity?:boolean;failureStage?:boolean}>;
 }
 export interface EvaluationCaller {readonly id:string;readonly token:string;readonly bindings:readonly EvaluationBinding[];}
 export interface EvaluationServiceLimits {
@@ -26,5 +28,5 @@ export interface EvaluationService {
   close():Promise<Readonly<{cleanup:'confirmed'|'unconfirmed';activeRuns:number}>>;
 }
 export function startEvaluationService(options:Readonly<{
-  callers:readonly EvaluationCaller[];host?:'127.0.0.1'|'::1';port?:number;limits?:Partial<EvaluationServiceLimits>;
+  callers:readonly EvaluationCaller[];host?:'127.0.0.1'|'::1';port?:number;limits?:Partial<EvaluationServiceLimits>;requirePersistentBudget?:boolean;
 }>):Promise<EvaluationService>;

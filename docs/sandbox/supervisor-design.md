@@ -46,7 +46,10 @@ Abrupt controller death is outside the implemented in-process cleanup path. The
 [crash-recovery design](recovery-design.md) specifies the optional implemented
 durable journal, offline filesystem and delegated-cgroup workflow, native
 receipt, and formal safety boundary. It is a trusted CLI operation and does not
-extend either control protocol. Process recovery remains ambiguity-only.
+extend either control protocol. V2 journal process records can be reclaimed only
+through their exact covering group and a durable observed-empty cleanup result;
+legacy or ambiguous process claims remain ambiguity-only. The required native
+controller-death/descendant acceptance remains separate from source tests.
 
 ## Trust boundary
 

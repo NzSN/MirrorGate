@@ -138,6 +138,9 @@ def _cgroup_observations(values: Any,
                                label="cgroup counters")
         if not counters and result["result"] == "reclaimed":
             raise AdmissionError("reclaimed cgroup lacks terminal counters")
+        if (result["result"] == "reclaimed"
+                and "populated 0" not in (counters.get("cgroup.events") or "").splitlines()):
+            raise AdmissionError("reclaimed cgroup lacks observed quiescence")
         if not counters and result["reasonCode"] is None:
             raise AdmissionError("unobserved cgroup lacks reason code")
         checked.append({"resourceId": resource_id, "settings": settings,
@@ -189,7 +192,7 @@ def _validate_payload(payload: Any) -> dict[str, Any]:
     attempt_id = _id(payload["attemptId"], "attemptId")
     trigger = _id(payload["trigger"], "trigger")
     journal_schema = payload["journalSchema"]
-    if journal_schema != "mirrorgate.recovery-journal/v1":
+    if journal_schema not in ("mirrorgate.recovery-journal/v1", "mirrorgate.recovery-journal/v2"):
         raise AdmissionError("invalid receipt provenance")
     controller = _id(payload["controllerInstance"], "controllerInstance")
     boot_id = _id(payload["bootId"], "bootId")

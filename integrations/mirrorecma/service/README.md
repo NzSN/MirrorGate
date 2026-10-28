@@ -52,3 +52,24 @@ contract is `docs/evaluation-service-contract-v1.md` in the MirrorGate source.
 Full private receipts remain in the registered trusted callback. Only its
 validated `publicResult` is returned. Callback rejection or nonsettlement produces
 an explicit unconfirmed workflow failure rather than an invented cleanup receipt.
+
+For a private finite evaluation, select `requirePersistentBudget: true` and add
+an operator-owned `attemptBudget` to each binding:
+
+```js
+attemptBudget: {
+  directory: '/operator/private/alice-counter-corpus', // existing, mode 0700
+  authorRef: 'ci', // must equal this caller's id
+  corpusDigest: approvedPrivateCorpusSha256,
+  maxAttempts: 1,
+},
+disclosure: {}, // no optional counts, identities or failure stages
+```
+
+Reuse the directory across restarts, token rotation and implementations for the
+same author/corpus. Spent markers are synchronized before callback execution and
+remain spent on failure or cancellation; concurrent services share the ceiling.
+The operator must not delete/replace the directory to bypass that decision.
+See the source contract's persistent-attempt section for crash, filesystem and
+legacy-compatibility limits. This policy does not supply OS aggregate quotas or
+prove Gate physical cleanup.

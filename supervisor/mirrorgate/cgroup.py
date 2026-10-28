@@ -206,7 +206,7 @@ class CgroupSession:
             for name in ("pids.max", "memory.max", "memory.swap.max", "cpu.max")
         }
 
-    def cleanup(self, *, timeout=5.0):
+    def cleanup(self, *, timeout=5.0, before_remove=None):
         if self.fd < 0: return dict(self._cleanup_observations or {})
         self._validate()
         _write_at(self.fd, "cgroup.kill", "1")
@@ -216,6 +216,8 @@ class CgroupSession:
             if any(line.split() == ["populated", "0"]
                    for line in events.splitlines()):
                 result = self.observe()
+                if before_remove is not None:
+                    before_remove(dict(result))
                 os.rmdir(self.name, dir_fd=self.delegation.fd)
                 os.close(self.fd)
                 self.fd = -1

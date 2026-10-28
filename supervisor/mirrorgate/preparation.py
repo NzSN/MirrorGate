@@ -26,7 +26,8 @@ from .sandbox import GateSession, SandboxProcess
 from .source_view import (SourceViewCleanupError, SourceViewMaterialization,
                           SourceViewPolicy, materialize_source_view)
 from .worker_broker import BrokerError, WorkerReservation
-from .recovery_journal import JournalError, RecoveryJournal, filesystem_identity
+from .recovery_journal import (JournalError, RecoveryJournal, filesystem_identity,
+                               GROUP_SCHEMA, cgroup_identity_digest)
 from .cgroup import CgroupDelegation
 from .node_profile import copy_selected, runtime_binary, sha256
 
@@ -625,15 +626,19 @@ class ControlBackend:
                 if self._journal is not None:
                     self._journal.claim_intent(session_id=owner.session_id,
                                                resource_id=cgroup_resource_id,
-                                               kind="cgroup", stage="authorization")
+                                               kind="cgroup", stage="authorization", schema=GROUP_SCHEMA)
                 cgroup_session = self._cgroup.create(owner.session_id,
                                                      policy.aggregate_limits)
                 if self._journal is not None:
                     info = os.stat(cgroup_session.path, follow_symlinks=False)
+                    parent_info = os.fstat(self._cgroup.fd)
                     self._journal.transition(cgroup_resource_id, "durable_owned",
                         identity={"relativePath": cgroup_session.name,
                                   "device": info.st_dev, "inode": info.st_ino,
-                                  "mode": stat.S_IFMT(info.st_mode)})
+                                  "mode": stat.S_IFMT(info.st_mode),
+                                  "delegation": {"device": parent_info.st_dev,
+                                                 "inode": parent_info.st_ino,
+                                                 "uid": parent_info.st_uid}})
             state = BackendSession(
                 owner=owner, policy=policy, runtime=runtime_plan, limits=limits,
                 submission_kind=kind, input_path=input_path, build_plan=build_plan,
@@ -738,16 +743,28 @@ class ControlBackend:
             return None
         resource_id = "process-" + secrets.token_hex(16)
         claimed = False
+        group_binding: dict[str, str] = {}
 
         def intent() -> None:
             nonlocal claimed
             if self._journal is not None:
+                if state.cgroup_session is not None:
+                    if len(state.journal_cgroup_resources) != 1:
+                        raise JournalError("process lacks an exact covering cgroup claim")
+                    group = self._journal.read(state.journal_cgroup_resources[0])
+                    if group["schema"] != GROUP_SCHEMA or group["phase"] != "durable_owned":
+                        raise JournalError("covering cgroup is not durably owned")
+                    group_binding.update(cgroupResourceId=group["resourceId"],
+                                         cgroupIdentityDigest=cgroup_identity_digest(group["identity"]))
                 self._journal.claim_intent(session_id=state.owner.session_id,
                                            resource_id=resource_id, kind="process",
-                                           stage=stage)
+                                           stage=stage, schema=GROUP_SCHEMA if group_binding else "mirrorgate.recovery-journal/v1",
+                                           identity=group_binding or None)
                 claimed = True
 
         def started(process) -> None:
+            if group_binding and state.cgroup_session is None:
+                raise JournalError("covering cgroup closed before process membership")
             if state.cgroup_session is not None:
                 state.cgroup_session.join(process.pid)
             if self._journal is None:
@@ -762,7 +779,7 @@ class ControlBackend:
             if not cgroup:
                 raise JournalError("process cgroup observation is unavailable")
             identity = {"pid": process.pid, "startTime": fields[19],
-                        "bootId": self._journal.boot_id, "cgroup": cgroup}
+                        "bootId": self._journal.boot_id, "cgroup": cgroup, **group_binding}
             self._journal.transition(resource_id, "durable_owned", identity=identity)
             self._journal.transition(resource_id, "active")
             state.journal_process_resources.append(resource_id)
@@ -1350,27 +1367,25 @@ class ControlBackend:
             else:
                 with state.lock:
                     state.reservation = None
-        if self._journal is not None:
-            unconfirmed_processes = []
-            for resource_id in state.journal_process_resources:
-                try:
-                    if self._journal.read(resource_id)["phase"] != "reclaimed":
-                        unconfirmed_processes.append(resource_id)
-                except JournalError:
-                    unconfirmed_processes.append(resource_id)
-            if unconfirmed_processes:
-                failures.append("process cleanup observation is unconfirmed")
-                remaining.append("process-journal")
-                return CleanupResult(False, tuple(dict.fromkeys(remaining)),
-                                     tuple(failures))
         if state.cgroup_session is not None:
             try:
                 for resource_id in state.journal_cgroup_resources:
                     self._journal_cleanup_intent(resource_id)
+                settings = state.cgroup_session.settings()
+                def persist_empty(observed):
+                    if self._journal is not None:
+                        for resource_id in state.journal_cgroup_resources:
+                            self._journal.transition(resource_id, "cleanup_intent",
+                                cleanup_evidence={"settings":settings, "counters":observed})
                 state.cgroup_observations = state.cgroup_session.cleanup(
-                    timeout=max(0, deadline - time.monotonic()))
+                    timeout=max(0, deadline - time.monotonic()),
+                    **({"before_remove":persist_empty} if self._journal is not None else {}))
                 for resource_id in state.journal_cgroup_resources:
-                    self._journal_cleanup_result(resource_id, complete=True)
+                    if self._journal is not None:
+                        self._journal.transition(resource_id, "reclaimed",
+                            cleanup_evidence={"settings": settings, "counters": state.cgroup_observations},
+                            observation={"attemptId":self._journal.controller_instance,
+                                         "status":"recovered", "reasonCode":"owned_cgroup_empty"})
                 state.cgroup_session = None
             except (AdmissionError, OSError) as exc:
                 for resource_id in state.journal_cgroup_resources:
@@ -1381,6 +1396,23 @@ class ControlBackend:
                 failures.append(f"cgroup cleanup failed: {exc}")
                 remaining.append("cgroup")
                 return CleanupResult(False, tuple(dict.fromkeys(remaining)), tuple(failures))
+        if self._journal is not None:
+            unconfirmed_processes = []
+            for resource_id in state.journal_process_resources:
+                try:
+                    process_record = self._journal.read(resource_id)
+                    if process_record["phase"] not in ("reclaimed", "ambiguous") and process_record["schema"] == GROUP_SCHEMA:
+                        from .recovery import _reclaim_group_process
+                        _reclaim_group_process(self._journal, process_record, self._journal.controller_instance)
+                    if self._journal.read(resource_id)["phase"] != "reclaimed":
+                        unconfirmed_processes.append(resource_id)
+                except JournalError:
+                    unconfirmed_processes.append(resource_id)
+            if unconfirmed_processes:
+                failures.append("process cleanup observation is unconfirmed")
+                remaining.append("process-journal")
+                return CleanupResult(False, tuple(dict.fromkeys(remaining)),
+                                     tuple(failures))
         for name in ("artifact_lease", "source_lease", "node_shim_lease", "manifest_lease", "node_runtime_lease", "node_dependency_lease"):
             lease = getattr(state, name)
             if lease is not None:

@@ -29,6 +29,8 @@
   "ownedProcessCloseReceipt": "checked-reap-v1",
   "recovery": {
     "journalSchema": "mirrorgate.recovery-journal/v1",
+    "groupCoveredJournalSchema": "mirrorgate.recovery-journal/v2",
+    "groupCoveredProcessRecovery": "source-tested-native-acceptance-required",
     "receiptSchema": "mirrorgate.recovery-receipt/v1",
     "mode": "offline-explicit-reclaim",
     "sessionAdoption": false

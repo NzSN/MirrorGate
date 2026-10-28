@@ -2,8 +2,11 @@
 
 Status: the versioned local journal, exclusive state-root lease, filesystem
 inspection/reclamation, optional delegated-cgroup recovery, native private
-receipt, trusted offline CLI, and bounded formal model are implemented. Process
-recovery remains ambiguity-only. The current host has no supplied writable
+receipt, trusted offline CLI, and bounded formal model are implemented. Journal
+v2 adds group-covered process recovery, durable empty-subtree observations and
+retryable enclosing filesystem cleanup. Legacy v1 processes remain ambiguity-only.
+The new source path has contract/regression checks; real native acceptance remains
+required. The current host has no supplied writable
 delegated parent, so the required real-cgroup acceptance tier is unavailable.
 The design baseline was MirrorGate commit
 `173075d318e4be926570a1378fc0aa36a1294f89`.
@@ -46,6 +49,33 @@ write the native receipt to one new owner-only file with `--receipt`; it never
 overwrites an existing file.
 
 ## Identity vocabulary
+
+### Journal v2: group-covered process recovery
+
+The v2 extension is emitted only for a delegated cgroup and its bound processes.
+Legacy v1 process records remain ambiguity-only. A v2 cgroup identity also pins
+the delegation's device, inode and UID. Before spawning, the process intent
+records the exact cgroup resource ID and a domain-separated SHA-256 of its
+immutable identity. After joining the still-barriered launcher, the controller
+publishes PID/start/boot observations with that linkage, then releases execution.
+An intent without completed membership publication is not a recoverable process.
+
+Offline recovery validates current boot, UID, root, controller, session, exact
+group identity digest and delegation. It reclaims the group first, retaining a
+durable observed-empty settings/counters before removal and a final
+`owned_cgroup_empty` observation after cleanup succeeds. The deletion-intent
+record is synchronized before `rmdir`; a cut after removal but before terminal
+publication can replay that existing quiescence evidence under the exact pinned
+boot/delegation and exclusive Gate ownership. A missing group without it stays
+ambiguous. Operators must not rename, replace or mutate live Gate-owned resources
+behind their owner; existing replacement inodes are refused. V2 records retain those counters for receipt
+reconstruction on retry; a v1 terminal group without them is reported unconfirmed.
+Only that observation authorizes marking a fully published linked process
+reclaimed, including on retry after an interrupted recovery. No PID-derived
+signal or ownership inference is introduced. Group cleanup failure keeps linked
+process cleanup retryable and protects enclosing filesystem claims. Missing,
+foreign, legacy, changed or ambiguous linkage remains ambiguous. These source
+rules require real descendant/controller-death acceptance on an admitted host.
 
 These identities are distinct and must not be substituted for each other.
 
@@ -307,13 +337,21 @@ outcome axes.
 
 The implementation deliberately leaves intentionally retained source
 views in their existing operator workspace outside the recovery root. It never
-discovers or removes them after restart. Process records are reported ambiguous
-and never authorize a post-restart signal. Cgroup records are also ambiguous
+discovers or removes them after restart. Legacy v1 process records are reported
+ambiguous and never authorize a post-restart signal. V2 group-covered processes
+use the separate exact-link/observed-empty contract above; they introduce no
+PID-derived signal authority. Cgroup records are also ambiguous
 without the explicitly supplied delegated parent; with it, exact identity and
 terminal kernel observations are required. Cleanup failures stay retryable and
 retain the earlier failed observation.
 
 Run the model gate from the repository root:
+
+The existing bounded formal model describes the original v1 ownership/lifecycle
+abstraction. It does not model the new v2 linkage, terminal-counter persistence
+or persistent service attempt budget; their current evidence is executable
+contract/regression testing. A passing original model gate cannot be credited as
+a proof or native qualification of these extensions.
 
 ```bash
 bash scripts/check-recovery-model.sh

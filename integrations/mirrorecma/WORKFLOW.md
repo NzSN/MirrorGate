@@ -81,6 +81,10 @@ Late factory/runner continuations cannot acquire a worker after closure.
 receipt. It excludes private model reports, expected states, traces, host paths,
 credentials, control handles, full author output and arbitrary exception messages.
 The service layer may publish this result; it retains the trusted receipt locally.
+For private evaluations across restarts, use the service's
+`requirePersistentBudget` and per-author/corpus `attemptBudget`, with explicit
+binding disclosure. Epoch-local rate/start limits alone do not enforce that
+budget. See [the service contract](../../docs/evaluation-service-contract-v1.md).
 
 The installed Counter example uses the same generic suite as MirrorECMA's source
 tests/CLI. Fixture installation may copy the suite and rewrite only import

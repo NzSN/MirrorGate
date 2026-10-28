@@ -13,9 +13,11 @@ import threading
 from typing import Any, Callable
 
 from .policy import AdmissionError
+from .recovery_receipt import CGROUP_SETTINGS, CGROUP_COUNTERS
 
 
 SCHEMA = "mirrorgate.recovery-journal/v1"
+GROUP_SCHEMA = "mirrorgate.recovery-journal/v2"
 MAX_RECORD_BYTES = 64 * 1024
 MAX_RECORDS = 4096
 MAX_STRING = 512
@@ -183,14 +185,32 @@ def validate_state_root(path: str | Path, *, uid: int | None = None) -> tuple[Pa
     return root, fd
 
 
-def _validate_identity(kind: str, phase: str, value: Any) -> dict[str, Any]:
+def cgroup_identity_digest(identity: dict[str, Any]) -> str:
+    return hashlib.sha256(b"mirrorgate.cgroup-identity/v2\0" + _canonical(identity)).hexdigest()
+
+
+def _validate_identity(kind: str, phase: str, value: Any, schema: str) -> dict[str, Any]:
     if type(value) is not dict:
         raise JournalError("identity must be an object")
     allowed = IDENTITY_FIELDS[kind]
+    if schema == GROUP_SCHEMA:
+        if kind == "cgroup":
+            allowed = allowed | {"delegation"}
+        elif kind == "process":
+            allowed = allowed | {"cgroupResourceId", "cgroupIdentityDigest"}
+        else:
+            raise JournalError("v2 is restricted to cgroup-covered resources")
     if set(value) - allowed:
         raise JournalError("identity contains unknown fields")
-    if phase in ("allocation_intent", "ambiguous") and not value:
+    if phase in ("allocation_intent", "ambiguous") and not value and not (schema == GROUP_SCHEMA and kind == "process"):
         return {}
+    if schema == GROUP_SCHEMA and kind == "process":
+        _opaque(value.get("cgroupResourceId"), "covering cgroup resource")
+        digest = value.get("cgroupIdentityDigest")
+        if type(digest) is not str or len(digest) != 64 or any(ch not in "0123456789abcdef" for ch in digest):
+            raise JournalError("invalid covering cgroup identity digest")
+        if phase in ("allocation_intent", "ambiguous") and set(value) == {"cgroupResourceId", "cgroupIdentityDigest"}:
+            return dict(value)
     if set(value) != allowed:
         raise JournalError("identity fields are incomplete")
     result = dict(value)
@@ -207,6 +227,11 @@ def _validate_identity(kind: str, phase: str, value: Any) -> dict[str, Any]:
         for name in ("device", "inode", "mode"):
             if type(result[name]) is not int or result[name] < 0:
                 raise JournalError("cgroup identity is invalid")
+        if schema == GROUP_SCHEMA:
+            parent = result["delegation"]
+            if type(parent) is not dict or set(parent) != ROOT_IDENTITY_FIELDS or any(
+                    type(parent[key]) is not int or parent[key] < 0 for key in ROOT_IDENTITY_FIELDS):
+                raise JournalError("invalid cgroup delegation identity")
     else:
         if type(result["pid"]) is not int or result["pid"] <= 0:
             raise JournalError("process PID observation is invalid")
@@ -217,9 +242,12 @@ def _validate_identity(kind: str, phase: str, value: Any) -> dict[str, Any]:
 
 
 def validate_record(value: Any, *, expected_name: str | None = None) -> dict[str, Any]:
-    if type(value) is not dict or set(value) != TOP_FIELDS:
+    if type(value) is not dict:
         raise JournalError("record fields are not closed")
-    if value["schema"] != SCHEMA:
+    expected = TOP_FIELDS | ({"cleanupEvidence"} if value.get("schema") == GROUP_SCHEMA else set())
+    if set(value) != expected:
+        raise JournalError("record fields are not closed")
+    if value["schema"] not in (SCHEMA, GROUP_SCHEMA):
         raise JournalError("unsupported journal version")
     if type(value["sequence"]) is not int or value["sequence"] <= 0:
         raise JournalError("invalid record sequence")
@@ -236,7 +264,19 @@ def validate_record(value: Any, *, expected_name: str | None = None) -> dict[str
     phase = value["phase"]
     if type(kind) is not str or type(phase) is not str or kind not in KINDS or phase not in PHASES:
         raise JournalError("invalid resource kind or phase")
-    identity = _validate_identity(kind, phase, value["identity"])
+    identity = _validate_identity(kind, phase, value["identity"], value["schema"])
+    if value["schema"] == GROUP_SCHEMA and value["cleanupEvidence"] is not None:
+        evidence = value["cleanupEvidence"]
+        if (kind != "cgroup" or phase not in ("cleanup_intent", "cleanup_failed", "reclaimed")
+                or type(evidence) is not dict or set(evidence) != {"settings", "counters"}):
+            raise JournalError("invalid cgroup cleanup evidence")
+        settings, counters = evidence["settings"], evidence["counters"]
+        if (type(settings) is not dict or set(settings) != CGROUP_SETTINGS
+                or type(counters) is not dict or not set(counters) <= CGROUP_COUNTERS
+                or any(item is not None and (type(item) is not str or len(item.encode("utf-8")) > 4096)
+                       for item in [*settings.values(), *counters.values()])
+                or "populated 0" not in (counters.get("cgroup.events") or "").splitlines()):
+            raise JournalError("cgroup cleanup evidence lacks observed quiescence")
     if type(value["retainedRecoverable"]) is not bool:
         raise JournalError("invalid retained policy")
     root_identity = value["stateRoot"]
@@ -450,7 +490,8 @@ class RecoveryJournal:
 
     @_synchronized
     def claim_intent(self, *, session_id: str, resource_id: str, kind: str,
-                     stage: str, retained_recoverable: bool = False) -> dict[str, Any]:
+                     stage: str, retained_recoverable: bool = False,
+                     schema: str = SCHEMA, identity: dict[str, Any] | None = None) -> dict[str, Any]:
         _opaque(session_id, "session ID")
         _opaque(resource_id, "resource ID")
         _opaque(stage, "stage")
@@ -469,15 +510,17 @@ class RecoveryJournal:
         else:
             raise JournalError("duplicate resource ID")
         record = {
-            "schema": SCHEMA, "sequence": 1,
+            "schema": schema, "sequence": 1,
             "controllerInstance": self.controller_instance,
             "bootId": self.boot_id, "principalUid": self.principal_uid,
             "sessionId": session_id, "resourceId": resource_id,
             "kind": kind, "phase": "allocation_intent", "stage": stage,
-            "identity": {}, "retainedRecoverable": retained_recoverable,
+            "identity": {} if identity is None else dict(identity), "retainedRecoverable": retained_recoverable,
             "observations": [], "stateRoot": dict(self.state_root_identity),
             "cleanupTarget": None,
         }
+        if schema == GROUP_SCHEMA:
+            record["cleanupEvidence"] = None
         self._publish(record, create=True)
         return self.read(resource_id)
 
@@ -486,14 +529,24 @@ class RecoveryJournal:
                    identity: dict[str, Any] | None = None,
                    retained_recoverable: bool | None = None,
                    observation: dict[str, Any] | None = None,
-                   cleanup_target: str | None = None) -> dict[str, Any]:
+                   cleanup_target: str | None = None,
+                   cleanup_evidence: dict[str, Any] | None = None) -> dict[str, Any]:
         current = self.read(resource_id)
-        if phase not in TRANSITIONS[current["phase"]]:
+        observation_update = (phase == current["phase"] == "cleanup_intent"
+                              and cleanup_evidence is not None)
+        if phase not in TRANSITIONS[current["phase"]] and not observation_update:
             raise JournalError("invalid journal transition")
         updated = {key: value for key, value in current.items() if key != "checksum"}
         updated["sequence"] += 1
         updated["phase"] = phase
+        if cleanup_evidence is not None:
+            if current["schema"] != GROUP_SCHEMA or current["kind"] != "cgroup" or phase not in ("cleanup_intent", "reclaimed"):
+                raise JournalError("cleanup evidence requires v2 cgroup cleanup")
+            updated["cleanupEvidence"] = cleanup_evidence
         if identity is not None:
+            if current["schema"] == GROUP_SCHEMA and any(
+                    identity.get(key) != value for key, value in current["identity"].items()):
+                raise JournalError("v2 ownership identity is immutable")
             updated["identity"] = dict(identity)
         if retained_recoverable is not None:
             updated["retainedRecoverable"] = retained_recoverable

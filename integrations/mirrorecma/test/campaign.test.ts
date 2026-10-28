@@ -177,6 +177,24 @@ test("missing trusted probe is explicit and prevents campaign acceptance", async
   expect(calls).toBe(1);
 });
 
+test("matching shadow reports cannot pass a Gate campaign when the real-SUT probe disagrees", async () => {
+  let calls = 0;
+  const result = await evaluateGateCampaignWithEvaluator(
+    options({ probe: async () => ({status: "failed", code: "observed_real_state_disagrees"}) }),
+    async (_suite, configured: any) => {
+      calls++;
+      // The ordinary baseline looks successful, including physical cleanup.
+      return outcome(configured.environment.taskRef);
+    },
+  );
+  expect(result.campaign).toMatchObject({
+    status: "baseline_failed", acceptance: {status: "incomplete"},
+    baseline: {probe: {status: "failed", code: "observed_real_state_disagrees"}},
+  });
+  expect(calls).toBe(1);
+  expect(result.captures).toHaveLength(0);
+});
+
 test("physical cleanup cannot be inferred from local SuiteResult cleanup", async () => {
   const result = await evaluateGateCampaignWithEvaluator(
     options(),

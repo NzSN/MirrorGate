@@ -150,6 +150,15 @@ class ReceiptTests(unittest.TestCase):
         self.assertEqual(receipt["cgroupObservations"][0]["resourceId"], "cg")
         self.assertEqual(public_summary(receipt)["cleanup"]["status"],
                          "confirmed")
+        for schema in ("mirrorgate.recovery-journal/v1", "mirrorgate.recovery-journal/v2"):
+            candidate = json.loads(json.dumps(receipt))
+            candidate["journalSchema"] = schema
+            candidate["cgroupObservations"][0]["counters"]["cgroup.events"] = "populated 1"
+            unsigned = {key:value for key,value in candidate.items() if key != "sha256"}
+            candidate["sha256"] = hashlib.sha256(json.dumps(unsigned, sort_keys=True,
+                separators=(",", ":"), ensure_ascii=True).encode()).hexdigest()
+            with self.assertRaisesRegex(AdmissionError, "observed quiescence"):
+                public_summary(candidate)
         with self.assertRaisesRegex(AdmissionError, "do not cover"):
             create_receipt(
                 attempt_id="missing", trigger="offline_reclaim", original=None,

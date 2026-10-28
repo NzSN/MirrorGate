@@ -16,7 +16,7 @@ evaluation environment, using a language-neutral port protocol.
 
 ## Status
 
-The [October 7 M5 record](../Mirrors/Plans/q3-published-roadmap-2026-10-07.md)
+The [October 7 M5 record](../Mirrors/Plans/completed/q3-published-roadmap-2026-10-07.md)
 qualifies the frozen WSL2/Windows-oracle combination, including installed Gate
 campaigns and prepared-filesystem recovery. Broader M4 aggregate enforcement and
 active-process recovery remain a separate user-selected track. Windows model
@@ -37,7 +37,9 @@ Optional offline crash recovery now journals and reclaims exact Gate-owned
 filesystem resources below an operator state root. When the administrator
 supplies the same pinned delegated cgroup-v2 parent, recovery also validates,
 kills, observes, and removes an exact owned cgroup child. Process recovery
-remains ambiguity-only; see the
+uses exact v2 process-to-group linkage and retained terminal counters for
+group-covered claims; legacy process claims remain ambiguity-only. Native
+controller-death acceptance is still required; see the
 [recovery lifecycle and claim limits](docs/sandbox/recovery-design.md).
 Policy-v2 source roots may use implemented
 [filtered source views](docs/sandbox/supervisor-design.md#filtered-source-views)

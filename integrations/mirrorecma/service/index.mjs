@@ -1,6 +1,7 @@
 import http from 'node:http';
 import {createHash,randomBytes} from 'node:crypto';
 import {EvaluationServiceError,MESSAGES,exact,fail,handle,limits as checkedLimits,parse,publicResult,reference,request} from './protocol.mjs';
+import {openAttemptBudget} from './attempt-budget.mjs';
 export {EvaluationServiceError} from './protocol.mjs';
 
 const id=()=>randomBytes(16).toString('hex');
@@ -24,24 +25,35 @@ const statusCodes={UNAUTHORIZED:401,ARGUMENT_INVALID:400,LIMIT_EXCEEDED:429,REFE
 
 /** Local authenticated transport around installed callbacks to Gate's R3 workflow. */
 export async function startEvaluationService(options){
-  exact(options,['callers'],['host','port','limits']);
+  exact(options,['callers'],['host','port','limits','requirePersistentBudget']);
+  if(options.requirePersistentBudget!==undefined&&typeof options.requirePersistentBudget!=='boolean')fail();
   const host=options.host??'127.0.0.1',port=options.port??0;
   if(!['127.0.0.1','::1'].includes(host)||!Number.isSafeInteger(port)||port<0||port>65535)fail();
   const limits=checkedLimits(options.limits),epoch=id(),callers=new Map(),callerIds=new Set();
   if(!Array.isArray(options.callers)||options.callers.length<1||options.callers.length>64)fail();
-  for(const input of options.callers){
+  const budgets=[];
+  try{for(const input of options.callers){
     exact(input,['id','token','bindings']);reference(input.id);
     if(typeof input.token!=='string'||!(/^[0-9a-f]{64}$/).test(input.token)||callerIds.has(input.id)||callers.has(hash(input.token)))fail();
     if(!Array.isArray(input.bindings)||input.bindings.length<1||input.bindings.length>128)fail();
     const bindings=new Map();
     for(const binding of input.bindings){
-      exact(binding,['suiteRef','implementationRef','evaluate']);reference(binding.suiteRef);reference(binding.implementationRef);
+      exact(binding,['suiteRef','implementationRef','evaluate'],['attemptBudget','disclosure']);reference(binding.suiteRef);reference(binding.implementationRef);
       if(typeof binding.evaluate!=='function')fail();
       const key=JSON.stringify([binding.suiteRef,binding.implementationRef]);if(bindings.has(key))fail();
-      bindings.set(key,binding.evaluate);
+      if(options.requirePersistentBudget===true&&binding.attemptBudget===undefined)fail();
+      let disclosure;
+      if(binding.disclosure!==undefined){
+        exact(binding.disclosure,[],['counts','implementationIdentity','failureStage']);
+        if(Object.values(binding.disclosure).some(value=>typeof value!=='boolean'))fail();
+        disclosure=Object.freeze({...binding.disclosure});
+      }else if(options.requirePersistentBudget===true)disclosure=Object.freeze({});
+      const budget=binding.attemptBudget===undefined?undefined:openAttemptBudget(binding.attemptBudget,input.id);
+      if(budget!==undefined)budgets.push(budget);
+      bindings.set(key,{evaluate:binding.evaluate,budget,disclosure});
     }
     callers.set(hash(input.token),{id:input.id,bindings,starts:new Map(),active:0,requests:0,window:Date.now()});callerIds.add(input.id);
-  }
+  }}catch(error){for(const budget of budgets)budget.close();throw error;}
   const records=new Map(),sockets=new Set();let active=0,accepted=0,inflight=0,closing=false,uncertain=false,closingPromise;
   function progress(record,message){
     const p=record.progress;p.records.push({seq:p.nextSeq++,message});
@@ -71,13 +83,19 @@ export async function startEvaluationService(options){
     record.phase='cancelling';progress(record,'Evaluation cancellation requested');record.controller.abort();
     record.grace=setTimeout(()=>unconfirmed(record,'WORKFLOW_UNSETTLED'),limits.cleanupGraceMs);record.grace.unref();
   }
-  function launch(record,evaluate){
+  function launch(record,binding){
     if(!record.controller.signal.aborted){record.phase='running';progress(record,'Evaluation workflow running');}
     record.timer=setTimeout(()=>cancel(record),limits.evaluationMs);record.timer.unref();
     // Only the registered R3 callback owns model/worker/cleanup composition.
-    record.promise=Promise.resolve().then(()=>evaluate({signal:record.controller.signal})).then(outcome=>{
+    record.promise=Promise.resolve().then(()=>binding.evaluate({signal:record.controller.signal})).then(outcome=>{
       if(terminal(record))return;
-      record.result=publicResult(outcome?.publicResult);if(record.result.cleanup!=='confirmed')uncertain=true;record.phase='finished';progress(record,'Evaluation workflow settled');
+      const projected={...publicResult(outcome?.publicResult)};
+      if(binding.disclosure!==undefined){
+        if(binding.disclosure.counts!==true)delete projected.counts;
+        if(binding.disclosure.implementationIdentity!==true)delete projected.implementation;
+        if(binding.disclosure.failureStage!==true)delete projected.failureStage;
+      }
+      record.result=Object.freeze(projected);if(record.result.cleanup!=='confirmed')uncertain=true;record.phase='finished';progress(record,'Evaluation workflow settled');
     }).catch(()=>unconfirmed(record,'WORKFLOW_FAILED')).finally(()=>{
       clearTimeout(record.timer);clearTimeout(record.grace);record.settled=true;record.settledAt=Date.now();
       record.caller.active--;active--;prune();
@@ -94,15 +112,16 @@ export async function startEvaluationService(options){
         if(existing.expired)fail('RUN_EXPIRED');return {run:snapshot(records.get(existing.runId))};
       }
       if(closing)fail('SERVICE_UNAVAILABLE');
-      const evaluate=caller.bindings.get(JSON.stringify([args.suiteRef,args.implementationRef]));
-      if(evaluate===undefined)fail('REFERENCE_UNKNOWN');
+      const binding=caller.bindings.get(JSON.stringify([args.suiteRef,args.implementationRef]));
+      if(binding===undefined)fail('REFERENCE_UNKNOWN');
       if(active>=limits.activeRuns||caller.active>=limits.activeRunsPerCaller||accepted>=limits.lifetimeStarts)fail('LIMIT_EXCEEDED');
+      try{binding.budget?.consume();}catch(error){if(error instanceof EvaluationServiceError&&error.code==='LIMIT_EXCEEDED')throw error;fail('SERVICE_UNAVAILABLE');}
       const record={runId:id(),startKey:args.startKey,suiteRef:args.suiteRef,implementationRef:args.implementationRef,
         phase:'queued',progress:{firstSeq:1,nextSeq:1,truncated:false,records:[]},caller,controller:new AbortController(),settled:false};
       progress(record,'Evaluation accepted');records.set(record.runId,record);
       caller.starts.set(args.startKey,{runId:record.runId,suiteRef:record.suiteRef,implementationRef:record.implementationRef,expired:false});
       caller.active++;active++;accepted++;
-      queueMicrotask(()=>launch(record,evaluate));
+      queueMicrotask(()=>launch(record,binding));
       return {run:snapshot(record)};
     }
     const ref=args.runId===undefined?caller.starts.get(args.startKey):undefined;
@@ -140,7 +159,8 @@ export async function startEvaluationService(options){
   server.maxConnections=64;server.maxRequestsPerSocket=32;
   server.on('connection',socket=>{sockets.add(socket);socket.once('close',()=>sockets.delete(socket));});
   server.on('clientError',(_error,socket)=>{socket.end('HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');});
-  await new Promise((resolve,reject)=>{server.once('error',reject);server.listen({host,port},()=>{server.off('error',reject);resolve();});});
+  try{await new Promise((resolve,reject)=>{server.once('error',reject);server.listen({host,port},()=>{server.off('error',reject);resolve();});});}
+  catch(error){for(const budget of budgets)budget.close();throw error;}
   const address=server.address();const origin=`http://${host==='::1'?'[::1]':host}:${address.port}`;
   const retention=setInterval(prune,Math.min(1000,limits.retentionMs));retention.unref();
   async function close(){
@@ -155,6 +175,7 @@ export async function startEvaluationService(options){
       clearTimeout(timer);
       for(const record of pending)if(!record.settled)unconfirmed(record,'WORKFLOW_UNSETTLED');
       for(const socket of sockets)socket.destroy();await stopped;
+      for(const budget of budgets)budget.close();
       return Object.freeze({cleanup:active===0&&!uncertain?'confirmed':'unconfirmed',activeRuns:active});
     })();return closingPromise;
   }
